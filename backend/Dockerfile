@@ -10,4 +10,7 @@ COPY . .
 
 EXPOSE 5000
 
+ENV FLASK_APP=app.py
+ENV FLASK_ENV=development
+
 CMD ["python", "app.py"]

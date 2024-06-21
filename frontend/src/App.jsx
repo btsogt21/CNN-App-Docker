@@ -117,10 +117,10 @@ function App() {
             });
             // Using the aforementioned 'setAccuracy' and 'setLoss' functions to update the accuracy and loss
             // with data from the response object
-            setAccuracy(response.data.accuracy);
-            setLoss(response.data.loss);
+            setAccuracy(response.data.test_accuracy);
+            setLoss(response.data.test_loss);
         } catch (err){
-            setError('Failed to train model: ${err.message}');
+            setError(`Failed to train model: ${err.message}`);
         } finally {
             setLoading(false);
         }

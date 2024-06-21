@@ -68,7 +68,7 @@ def train_model():
     layers = data['layers']
     units = data['units']
     epochs = data['epochs']
-    batch_size = data['batch_size']
+    batch_size = data['batchSize']
     optimizer = data['optimizer']
 
     #Loading CIFAR-10 in and splitting dataset
