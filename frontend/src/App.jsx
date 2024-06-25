@@ -76,6 +76,7 @@ function App() {
             // are still present, and we're just adding the new progress data 'data.progress' to the
             // end.
             setTrainingProgress((prev) => [...prev, data]);
+            console.log('Training progress data received:', data);
         });
 
         // Returning a cleanup function that will be called when the component unmounts or when the 
@@ -168,24 +169,22 @@ function App() {
                     when the input field value changes. */}
                     <input type="number" value={layers} onChange={(e) => setLayers(parseInt(e.target.value))} />
                 </div>
-                {/* Commenting out control over node count for now. Will return to this later. */}
-                {/* <div>
+                <div>
                     <label>Units in Layers (comma-separated): </label>
                     <input
                         type="text"
                         value={units.join(',')}
                         onChange={(e) => setUnits(e.target.value.split(',').map(Number))}
                     />
-                </div> */}
+                </div>
                 <div>
                     <label>Number of Epochs: </label>
                     <input type="number" value={epochs} onChange={(e) => setEpochs(parseInt(e.target.value))} />
                 </div>
-                {/* Commenting out control over batch size for now, will return later */}
-                {/* <div>
+                <div>
                     <label>Batch Size: </label>
                     <input type="number" value={batchSize} onChange={(e) => setBatchSize(parseInt(e.target.value))} />
-                </div> */}
+                </div>
                 <div>
                     <label>Optimizer: </label>
                     <select value={optimizer} onChange={(e) => setOptimizer(e.target.value)}>

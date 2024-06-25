@@ -19,6 +19,10 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 
+import logging
+
+import sys
+import time
 
 # Create a Flask app
 
@@ -128,11 +132,24 @@ def train_model():
         loss='sparse_categorical_crossentropy',
         metrics=['accuracy']
     )
-
     class TrainingCallback(tf.keras.callbacks.Callback):
+        def __init__(self):
+            super().__init__()
+            self.batch_accuracies = []
+        def on_train_batch_end(self, batch, logs=None):
+            if batch == 0:
+                self.batch_accuracies = []
+            logs = logs or {}
+            self.batch_accuracies.append(logs['accuracy'])
+            total_accuracy = self.get_total_accuracy()
+            print (f" Batch {batch}: logs={logs}: total_accuracy={total_accuracy}")
+
         def on_epoch_end(self, epoch, logs=None):
             logs = logs or {}
+            print (f" Epoch {epoch}: logs={logs}")
             socketio.emit('training_progress', {'epoch': epoch, 'logs': logs})
+        def get_total_accuracy(self):
+            return np.sum(self.batch_accuracies)
 
     # Train the model
     history = model.fit(
@@ -140,11 +157,27 @@ def train_model():
         epochs=epochs,
         validation_data=val_generator,
         callbacks=[TrainingCallback()]
+
     )
+    # loss_history = history.history["loss"] #type is list
+    # for i in range(len(loss_history)):
+    #     print("Epoch %i :"%i, loss_history[i])
     # Evaluate the model on the test set
     test_loss, test_accuracy = model.evaluate(test_generator)
+    # logging.info(f"Test accuracy: {test_accuracy}, test loss: {test_loss}")
     response = {'test_accuracy': test_accuracy, 'test_loss': test_loss}
     return jsonify(response)
 
 if __name__ == '__main__':
     socketio.run(app, debug=True, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True)
+
+
+
+# logging.basicConfig(
+#     level=logging.INFO,
+#     format='%(asctime)s - %(levelname)s - %(message)s',
+#     handlers=[
+#         logging.FileHandler('script.log'),
+#         logging.StreamHandler()
+#     ]
+# )
