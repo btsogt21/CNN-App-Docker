@@ -132,6 +132,11 @@ def train_model():
         loss='sparse_categorical_crossentropy',
         metrics=['accuracy']
     )
+
+    # Define a custom callback to track the training progress. The below is specifically for identifying
+    # why the default output of tensorflow was differing from the callback output. Turns out the default
+    # output averages training accuracy and loss over the batches that we've already processed in a given
+    # epoch, whereas the callback prints the accuracy and loss for the most recent batch.
     class TrainingCallback(tf.keras.callbacks.Callback):
         def __init__(self):
             super().__init__()
@@ -150,6 +155,21 @@ def train_model():
             socketio.emit('training_progress', {'epoch': epoch, 'logs': logs})
         def get_total_accuracy(self):
             return np.sum(self.batch_accuracies)
+    
+    # Testing the same as the training callback, just for the testing set.
+    class EvaluationCallback(tf.keras.callbacks.Callback):
+        def __init__(self):
+            super().__init__()
+            self.batch_accuracies = []
+        def on_test_batch_end(self, batch, logs = None):
+            if batch == 0:
+                self.batch_accuracies = []
+            logs = logs or {}
+            self.batch_accuracies.append(logs['accuracy'])
+            total_accuracy = self.get_total_accuracy()
+            print(f"Test batch {batch}: logs={logs}: total_accuracy={total_accuracy}")
+        def get_total_accuracy(self):
+            return np.sum(self.batch_accuracies)
 
     # Train the model
     history = model.fit(
@@ -163,7 +183,7 @@ def train_model():
     # for i in range(len(loss_history)):
     #     print("Epoch %i :"%i, loss_history[i])
     # Evaluate the model on the test set
-    test_loss, test_accuracy = model.evaluate(test_generator)
+    test_loss, test_accuracy = model.evaluate(test_generator, callbacks = [EvaluationCallback()])
     # logging.info(f"Test accuracy: {test_accuracy}, test loss: {test_loss}")
     response = {'test_accuracy': test_accuracy, 'test_loss': test_loss}
     return jsonify(response)
