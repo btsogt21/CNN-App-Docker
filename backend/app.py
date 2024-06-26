@@ -3,10 +3,18 @@
 # the model on the CIFAR-10 dataset, and return the test accuracy and loss of the model.
 # 
 # Flask Imports
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-from flask_socketio import SocketIO, emit
+# from flask import Flask, request, jsonify
+# from flask_cors import CORS
+# from flask_socketio import SocketIO, emit
 
+# FastAPI Imports
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from socketio import AsyncServer, ASGIApp
+
+#uvicorn imports
+import uvicorn
 
 #preprocessing imports
 import tensorflow as tf
@@ -24,17 +32,35 @@ import logging
 import sys
 import time
 
-# Create a Flask app
+# Create a FastAPI instance
 
-app = Flask(__name__)
+app = FastAPI()
 
+sio = AsyncServer(async_mode='asgi', cors_allowed_origins='*')
+socket_app = ASGIApp(sio, app)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@sio.event
+async def connect(sid, environ):
+    print('Client connected')
+
+@sio.event
+async def disconnect(sid):
+    print('Client disconnected')
 # Create a SocketIO instance
 # This line sets the SECRET_KEY configuration variable for the flask application 'app'.
 # This is a critical configuration used by Flask to securely sign session cookies and other security-related
 # needs. Essential for keeping client side sessions secure. Here, it's being set to a static 'secret!' which
 # is not recommended for production. Should be a hard to guess string to ensure app security, and
 # should be read in from your environment variable to keep it out of your source code.
-app.config['SECRET_KEY'] = 'temp_secret!'
+# app.config['SECRET_KEY'] = 'temp_secret!'
 
 # This line initalizes a new SocketIO instance with the Flask application app as its argument. 
 # SocketIO is a library that facilitates real-time communication between clients and the server 
@@ -42,33 +68,33 @@ app.config['SECRET_KEY'] = 'temp_secret!'
 # (CORS) settings for the SocketIO instance, allowing connections from any domain ("*"). 
 # This is useful for development but should be more restrictive in production environments to 
 # prevent unwanted access from other domains.
-socketio = SocketIO(app, cors_allowed_origins="*")
+# socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Enable CORS
 # This line configures Cross-Origin Resource Sharing (CORS) for the Flask application. 
 # It specifies that all routes (denoted by "/*") are allowed to accept HTTP requests originating 
 # from "http://localhost:5173". This is essential for enabling web applications hosted on this 
 # origin to make requests to the Flask backend without violating the same-origin policy.
-CORS(app, resources = {r"/*": {"origins": "http://localhost:5173"}})
+# CORS(app, resources = {r"/*": {"origins": "http://localhost:5173"}})
 
 
 # Function decorated with @socketio.on('connect'). Runs when client connects with server over 
 # WebSocket. Primary purpose is to handle any initial setup or acknowledgements required when a new
 # client connects. In this case, it simply prints a message. Could later be used to initalize client
 # specific resources or data structures.
-@socketio.on('connect')
-def handle_connect():
-    print('Client connected')
+# @socketio.on('connect')
+# def handle_connect():
+#     print('Client connected')
 
 # Same thing as the above but for when a client disconnects. Should probably be used later to handle
 # termination or saving of ongoing training processes or data.
-@socketio.on('disconnect')
-def handle_disconnect():
-    print('Client disconnected')
+# @socketio.on('disconnect')
+# def handle_disconnect():
+#     print('Client disconnected')
 
-@app.route('/train', methods=['POST'])
-def train_model():
-    data = request.get_json()
+@app.post("/train")
+async def train_model(request: Request):
+    data = await request.json()
     layers = data['layers']
     units = data['units']
     epochs = data['epochs']
@@ -152,7 +178,9 @@ def train_model():
         def on_epoch_end(self, epoch, logs=None):
             logs = logs or {}
             print (f" Epoch {epoch}: logs={logs}")
-            socketio.emit('training_progress', {'epoch': epoch, 'logs': logs})
+            serializable_logs = {k: float(v) for k, v in logs.items()}
+            sio.emit('training_progress', {'epoch': epoch, 'logs': serializable_logs})
+
         def get_total_accuracy(self):
             return np.sum(self.batch_accuracies)
     
@@ -186,10 +214,10 @@ def train_model():
     test_loss, test_accuracy = model.evaluate(test_generator, callbacks = [EvaluationCallback()])
     # logging.info(f"Test accuracy: {test_accuracy}, test loss: {test_loss}")
     response = {'test_accuracy': test_accuracy, 'test_loss': test_loss}
-    return jsonify(response)
+    return JSONResponse(response)
 
 if __name__ == '__main__':
-    socketio.run(app, debug=True, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True)
+    uvicorn.run("app:socket_app", host = "0.0.0.0", port = 5000, reload = True)
 
 
 

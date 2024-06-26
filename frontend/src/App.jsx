@@ -5,6 +5,18 @@ import io from 'socket.io-client'
 
 const socket = io('http://localhost:5000')
 
+socket.on('connect', () => {
+    console.log('Connected to backend server');
+});
+
+socket.on('disconnect', () => {
+    console.log('Disconnected from backend server');
+});
+
+socket.on('connect_error', (error) => {
+    console.error('Failed to connect to backend server:', error);
+});
+
 // App component is a functional component (that is, a component defined as a function instead of as
 // an extension of the React.Component class). It is the main component of the application and is
 // responsible for rendering the UI and handling user interactions. Mounting refers to the process
