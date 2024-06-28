@@ -91,12 +91,21 @@ function App() {
             console.log('Training progress data received:', data);
         });
 
+        socket.on('training_complete', (data) => {
+            setAccuracy(data.test_accuracy);
+            setLoss(data.test_loss);
+            setLoading(false);
+            console.log('Training complete:', data);
+        }
+        );
+
         // Returning a cleanup function that will be called when the component unmounts or when the 
         // useEffect hook is run again. This is important because we don't want to keep listening 
         // for the 'training_progress' event when the component is no longer in use. This is a good 
         // practice to avoid memory leaks.
         return () => {
             socket.off('training_progress');
+            socket.off('training_complete');
         };
     }, []
     );
@@ -130,11 +139,10 @@ function App() {
             });
             // Using the aforementioned 'setAccuracy' and 'setLoss' functions to update the accuracy and loss
             // with data from the response object
-            setAccuracy(response.data.test_accuracy);
-            setLoss(response.data.test_loss);
+            // setAccuracy(response.data.test_accuracy);
+            // setLoss(response.data.test_loss);
         } catch (err){
             setError(`Failed to train model: ${err.message}`);
-        } finally {
             setLoading(false);
         }
 
