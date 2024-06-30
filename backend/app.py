@@ -43,21 +43,38 @@ async def train_model_request(payload: dict):
 async def training_status(task_id: str):
     task = AsyncResult(task_id)
     if task.state == 'SUCCESS':
-        return JSONResponse({
-            "test_accuracy": task.get()['test_accuracy'],
-            "test_loss": task.get()['test_loss']
+        state_var = task.state
+        result = task.get()
+        print('success reached', result)
+        task.forget()
+        return ({
+            "status": state_var,
+            "test_accuracy": result['test_accuracy'],
+            "test_loss": result['test_loss']
+        })
+    elif task.state == 'PROGRESS':
+        info = task.info
+        if info is not None:
+            return ({
+                "status": task.state,
+                "epoch": info['epoch'],
+                "logs": info['logs']
+            })
+        else:
+            return ({
+                "status": task.state,
+                "message": "task.info is None"
+            })
+    elif task.state == 'FAILURE':
+        task.forget()
+        return ({
+            "message": "Task has failed"
+        })
+    else:
+        return ({
+            "status": task.state,
+            "message": "Task pending or not found"
         })
 
 if __name__ == '__main__':
-    uvicorn.run("app:socket_app", host = "0.0.0.0", port = 5000, reload = True)
-
-
-
-# logging.basicConfig(
-#     level=logging.INFO,
-#     format='%(asctime)s - %(levelname)s - %(message)s',
-#     handlers=[
-#         logging.FileHandler('script.log'),
-#         logging.StreamHandler()
-#     ]
-# )
+    uvicorn.run("app:app", host = "0.0.0.0", port = 5000, reload = True)

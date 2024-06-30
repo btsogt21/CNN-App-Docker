@@ -79,53 +79,53 @@ def train_model(self, layers, units, epochs, batch_size, optimizer):
     # output averages training accuracy and loss over the batches that we've already processed in a given
     # epoch, whereas the callback prints the accuracy and loss for the most recent batch.
     class TrainingCallback(tf.keras.callbacks.Callback):
-        def __init__(self):
+        def __init__(self, task):
             super().__init__()
             self.batch_accuracies = []
-        def on_train_batch_end(self, batch, logs=None):
-            if batch == 0:
-                self.batch_accuracies = []
-            logs = logs or {}
-            self.batch_accuracies.append(logs['accuracy'])
-            total_accuracy = self.get_total_accuracy()
-            print (f" Batch {batch}: logs={logs}: total_accuracy={total_accuracy}")
+            self.task = task
+        # def on_train_batch_end(self, batch, logs=None):
+        #     if batch == 0:
+        #         self.batch_accuracies = []
+        #     logs = logs or {}
+        #     self.batch_accuracies.append(logs['accuracy'])
+        #     total_accuracy = self.get_total_accuracy()
+        #     print (f" Batch {batch}: logs={logs}: total_accuracy={total_accuracy}")
 
         def on_epoch_end(self, epoch, logs=None):
             logs = logs or {}
-            print (f" Epoch {epoch}: logs={logs}")
+            print (f" Epoch {epoch + 1}: logs={logs}")
             self.task.update_state(state='PROGRESS', meta={'epoch': epoch + 1, 'logs': logs})
 
         def get_total_accuracy(self):
             return np.sum(self.batch_accuracies)
     
     # Testing the same as the training callback, just for the testing set.
-    class EvaluationCallback(tf.keras.callbacks.Callback):
-        def __init__(self):
-            super().__init__()
-            self.batch_accuracies = []
-        def on_test_batch_end(self, batch, logs = None):
-            if batch == 0:
-                self.batch_accuracies = []
-            logs = logs or {}
-            self.batch_accuracies.append(logs['accuracy'])
-            total_accuracy = self.get_total_accuracy()
-            print(f"Test batch {batch}: logs={logs}: total_accuracy={total_accuracy}")
-        def get_total_accuracy(self):
-            return np.sum(self.batch_accuracies)
-
+    # class EvaluationCallback(tf.keras.callbacks.Callback):
+    #     def __init__(self):
+    #         super().__init__()
+    #         self.batch_accuracies = []
+    #     def on_test_batch_end(self, batch, logs = None):
+    #         if batch == 0:
+    #             self.batch_accuracies = []
+    #         logs = logs or {}
+    #         self.batch_accuracies.append(logs['accuracy'])
+    #         total_accuracy = self.get_total_accuracy()
+    #         print(f"Test batch {batch}: logs={logs}: total_accuracy={total_accuracy}")
+    #     def get_total_accuracy(self):
+    #         return np.sum(self.batch_accuracies)
     # Train the model
     history = model.fit(
         train_generator,
         epochs=epochs,
         validation_data=val_generator,
-        callbacks=[TrainingCallback(task=self)],
+        callbacks=[TrainingCallback(task = self)],
 
     )
     # loss_history = history.history["loss"] #type is list
     # for i in range(len(loss_history)):
     #     print("Epoch %i :"%i, loss_history[i])
     # Evaluate the model on the test set
-    test_loss, test_accuracy = model.evaluate(test_generator, callbacks = [EvaluationCallback()])
+    test_loss, test_accuracy = model.evaluate(test_generator)
     # logging.info(f"Test accuracy: {test_accuracy}, test loss: {test_loss}")
     response = {'test_accuracy': test_accuracy, 'test_loss': test_loss}
-    return response
+    self.update_state(state='SUCCESS', meta=response)

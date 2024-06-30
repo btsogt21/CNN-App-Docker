@@ -7,3 +7,5 @@ fastapi
 python-socketio
 uvicorn
 asyncio
+celery
+redis

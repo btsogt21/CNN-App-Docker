@@ -1,21 +1,6 @@
 import { useEffect, useState } from 'react'
 import './App.css'
 import axios from 'axios'
-import io from 'socket.io-client'
-
-const socket = io('http://localhost:5000')
-
-socket.on('connect', () => {
-    console.log('Connected to backend server');
-});
-
-socket.on('disconnect', () => {
-    console.log('Disconnected from backend server');
-});
-
-socket.on('connect_error', (error) => {
-    console.error('Failed to connect to backend server:', error);
-});
 
 // App component is a functional component (that is, a component defined as a function instead of as
 // an extension of the React.Component class). It is the main component of the application and is
@@ -43,7 +28,11 @@ function App() {
     const [error, setError] = useState(null);
 
     // Defining one more state variable to store training progress data/outputs to show the user.
-    const [trainingProgress, setTrainingProgress] = useState(0);
+    const [trainingProgress, setTrainingProgress] = useState([]);
+    const [taskId, setTaskId] = useState(null);
+    
+    // Defining state variable to track epoch number
+    const [currentEpoch, setCurrentEpoch] = useState(0);
 
     // Purpose of useEffect
 
@@ -58,57 +47,57 @@ function App() {
     // The side effect function can optionally return a cleanup function that React will call when 
     // the component unmounts or before re-running the side effect due to changes in dependencies
 
-    // The logic here is that we want to listen for the 'training_progress' event from the backend
-    // via the websocket connection. We then update the 'trainingProgress' state variable with the
-    // progress data from the event by calling the 'setTrainingProgress' function which adds the
-    // progress data to the 'trainingProgress' array.
-
-    // Useful if we want to keep a history of all the progress updates received over time for each 
-    // epoch.
-
     // ( () => {} ). Inside the paranthesis is the arrow function syntax. This is
     // basically saying that the first argument of useEffect (that is, effectFunction) is a function 
     // defined as follows:
     // () => { ... }, where () contains the parameters to the function and {...} contains the
     // body of the function.
     useEffect(() => {
-        // listening for the 'training_progress' event, then defining a callback function to 
-        // trigger when the event is received. The callback function takes a 'data' parameter. This
-        // 'data' parameter is received from the server when it sends a message of type 'training_progress'.
-        // The socket.on method then receives this data and passes it to the callback function as an argument.
-        // The name 'data' is arbitrary. You could name it anything and it would still represent the 
-        // data sent alongside the 'training_progress' event.
-        socket.on('training_progress', (data) => {
-            // Updating the 'trainingProgress' state variable with the progress data from the event.
-            // This works by calling the state updater function 'setTrainingProgress' with the previous
-            // state as an argument. Naming choice of the argument is arbitrary here as React invokes
-            // the function with the previous state as an argument. That's just how React works when 
-            // you call a state updater function. As for '[...prev, data]', you can think of
-            // it as an array where '...prev' indicates that all elements of the previous state array
-            // are still present, and we're just adding the new progress data 'data.progress' to the
-            // end.
-            setTrainingProgress((prev) => [...prev, data]);
-            console.log('Training progress data received:', data);
-        });
-
-        socket.on('training_complete', (data) => {
-            setAccuracy(data.test_accuracy);
-            setLoss(data.test_loss);
-            setLoading(false);
-            console.log('Training complete:', data);
+        let intervalId;
+        if (taskId){
+            intervalId = setInterval(pollTrainingStatus, 1000);
         }
-        );
-
-        // Returning a cleanup function that will be called when the component unmounts or when the 
-        // useEffect hook is run again. This is important because we don't want to keep listening 
-        // for the 'training_progress' event when the component is no longer in use. This is a good 
-        // practice to avoid memory leaks.
         return () => {
-            socket.off('training_progress');
-            socket.off('training_complete');
+            if (intervalId){
+                clearInterval(intervalId);
+            }
         };
-    }, []
+    }, [taskId] // passing into dependency array, could contain other variables too, hence why
+                // it's an array
     );
+
+    const pollTrainingStatus = async () => {
+        try{
+            const response = await axios.get('http://localhost:5000/training-status/' + taskId);
+            const data = response.data;
+            console.log(response)
+            if (data.status === 'SUCCESS'){
+                console.log('hit success in the frontend')
+                setAccuracy(data.test_accuracy);
+                setLoss(data.test_loss);
+                console.log(accuracy)
+                console.log(loss)
+                setLoading(false);
+                setTaskId(null);
+            } else if (data.status === 'PROGRESS') {
+                console.log('hit progress in the frontend')
+                print(currentEpoch)
+                if (data.epoch !== currentEpoch) {
+                    setTrainingProgress((prev) => [...prev, {'epoch': data.epoch, 'logs': data.logs}]);
+                    console.log(trainingProgress)
+                    setCurrentEpoch(data.epoch);
+                }
+            } else if (data.status === 'FAILURE') {
+                setError('Trainingfailed')
+                setLoading(false);
+                setTaskId(null);
+            }
+        } catch (err) {
+            setError(`Failed to poll training status: ${err.message}`);
+            setLoading(false);
+            setTaskId(null);
+        }
+    };
 
     // Here we're defining an asynchronous function named handleTrain using arrow function syntax.
     // This function takes an event object 'e' as a parameter, which is typically the event triggered
@@ -119,7 +108,6 @@ function App() {
         // calling 'preventDefault()' will prevent the form from being submitted. This means we can handle
         // the form submission or button click programmatically ourselves via javascript.
         e.preventDefault();
-
         setLoading(true);
         setError(null);
         setTrainingProgress([]);
@@ -137,39 +125,11 @@ function App() {
                 batchSize: batchSize,
                 optimizer: optimizer
             });
-            // Using the aforementioned 'setAccuracy' and 'setLoss' functions to update the accuracy and loss
-            // with data from the response object
-            // setAccuracy(response.data.test_accuracy);
-            // setLoss(response.data.test_loss);
+            setTaskId(response.data.task_id);
         } catch (err){
             setError(`Failed to train model: ${err.message}`);
             setLoading(false);
         }
-
-    // Mock data to be sent to backend
-    // const data = {
-    //     layers: layers,
-    //     units: units,
-    //     epochs: epochs,
-    //     batchSize: batchSize,
-    //     optimizer: optimizer
-    //   };
-
-    // console.log("Data to be sent to backend", JSON.stringify(data, null, 2));
-
-    // Mock response from backend
-    // const mockResponse = {
-    //     data: {
-    //         accuracy: 0.85,
-    //         loss: 0.35
-    //     }
-    // };
-
-    // console.log("Response from backend", JSON.stringify(mockResponse, null, 2));
-
-    // setAccuracy(mockResponse.data.accuracy);
-    // setLoss(mockResponse.data.loss);
-
     };
     return (
         <div className="App">
@@ -229,7 +189,7 @@ function App() {
                         in the array and index represents the item's index*/}
                         {trainingProgress.map((progress, index) => (
                             <li key={index}>
-                                Epoch {progress.epoch + 1}: {JSON.stringify(progress.logs)}
+                                Epoch {progress.epoch}: {JSON.stringify(progress.logs)}
                             </li>
                         ))}
                     </ul>
