@@ -1,5 +1,11 @@
+# META
+
+# Currently 1 active print statement as part of callback
+
+
 # importing celery
 from celery import Celery
+import redis
 
 # preprocessing imports
 import tensorflow as tf
@@ -12,7 +18,19 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 
-celery = Celery('tasks', broker='redis://localhost:6379/0', backend='redis://localhost:6379/0')
+# asyncio and aiohttp
+import asyncio
+import aiohttp
+
+import json
+
+# Creating a celery instance and a redis client. The Celery instance is used to create a task that will
+# train the model, whereas the redis client is used to publish updates to the frontend. The redis client
+# here is synchronous, as opposed to the asynchronous redis client used in the backend/app.py file.
+# We can use a synchronous client here because the worker.py file is not an ASGI application and does
+# not need to handle multiple concurrent connections.
+celery = Celery('tasks', broker='redis://redis:6379/0', backend='redis://redis:6379/0')
+redis_client = redis.Redis(host='redis', port = 6379, db = 0)
 
 @celery.task(bind=True)
 def train_model(self, layers, units, epochs, batch_size, optimizer):
@@ -55,17 +73,6 @@ def train_model(self, layers, units, epochs, batch_size, optimizer):
     model.add(Dense(units[-1], activation = 'relu'))
     model.add(Dropout(0.5))
     model.add(Dense(10, activation='softmax'))
-    # model = Sequential([
-    #     Conv2D(32, (3, 3), activation='relu', input_shape=(32, 32, 3)),
-    #     MaxPooling2D((2, 2)),
-    #     Conv2D(64, (3, 3), activation='relu'),
-    #     MaxPooling2D((2, 2)),
-    #     Conv2D(128, (3, 3), activation='relu'),
-    #     Flatten(),
-    #     Dense(128, activation='relu'),
-    #     Dropout(0.5),
-    #     Dense(10, activation='softmax')
-    # ])
 
     # Compile the model
     model.compile(
@@ -74,58 +81,33 @@ def train_model(self, layers, units, epochs, batch_size, optimizer):
         metrics=['accuracy']
     )
 
-    # Define a custom callback to track the training progress. The below is specifically for identifying
-    # why the default output of tensorflow was differing from the callback output. Turns out the default
-    # output averages training accuracy and loss over the batches that we've already processed in a given
+    # Define a custom callback to track the training progress.
+    # Note: Turns out the default output from tensorflow averages training accuracy and loss over 
+    # the batches that we've already processed in a given
     # epoch, whereas the callback prints the accuracy and loss for the most recent batch.
     class TrainingCallback(tf.keras.callbacks.Callback):
-        def __init__(self, task):
+        def __init__(self):
             super().__init__()
             self.batch_accuracies = []
-            self.task = task
-        # def on_train_batch_end(self, batch, logs=None):
-        #     if batch == 0:
-        #         self.batch_accuracies = []
-        #     logs = logs or {}
-        #     self.batch_accuracies.append(logs['accuracy'])
-        #     total_accuracy = self.get_total_accuracy()
-        #     print (f" Batch {batch}: logs={logs}: total_accuracy={total_accuracy}")
 
         def on_epoch_end(self, epoch, logs=None):
             logs = logs or {}
             print (f" Epoch {epoch + 1}: logs={logs}")
-            self.task.update_state(state='PROGRESS', meta={'epoch': epoch + 1, 'logs': logs})
+            update = {'status': "PROGRESS", 'epoch': epoch + 1, 'logs': logs}
+            redis_client.publish('model_updates', json.dumps(update))
 
         def get_total_accuracy(self):
             return np.sum(self.batch_accuracies)
     
-    # Testing the same as the training callback, just for the testing set.
-    # class EvaluationCallback(tf.keras.callbacks.Callback):
-    #     def __init__(self):
-    #         super().__init__()
-    #         self.batch_accuracies = []
-    #     def on_test_batch_end(self, batch, logs = None):
-    #         if batch == 0:
-    #             self.batch_accuracies = []
-    #         logs = logs or {}
-    #         self.batch_accuracies.append(logs['accuracy'])
-    #         total_accuracy = self.get_total_accuracy()
-    #         print(f"Test batch {batch}: logs={logs}: total_accuracy={total_accuracy}")
-    #     def get_total_accuracy(self):
-    #         return np.sum(self.batch_accuracies)
-    # Train the model
     history = model.fit(
         train_generator,
         epochs=epochs,
         validation_data=val_generator,
-        callbacks=[TrainingCallback(task = self)],
+        callbacks=[TrainingCallback()],
 
     )
-    # loss_history = history.history["loss"] #type is list
-    # for i in range(len(loss_history)):
-    #     print("Epoch %i :"%i, loss_history[i])
+
     # Evaluate the model on the test set
     test_loss, test_accuracy = model.evaluate(test_generator)
-    # logging.info(f"Test accuracy: {test_accuracy}, test loss: {test_loss}")
-    response = {'test_accuracy': test_accuracy, 'test_loss': test_loss}
-    self.update_state(state='SUCCESS', meta=response)
+    response = {"status": "SUCCESS", 'test_accuracy': test_accuracy, 'test_loss': test_loss}
+    redis_client.publish('model_updates', json.dumps(response))

@@ -1,6 +1,11 @@
-import { useEffect, useState } from 'react'
-import './App.css'
-import axios from 'axios'
+// currently two active console.log, this is to confirm that websocket is receiving MessaveEvent object
+// and passing it onto the onmessage event handler and its associated function.
+
+import { useEffect, useState } from 'react';
+import './App.css';
+import axios from 'axios';
+import useWebSocket, { readyState }  from 'react-use-websocket';
+
 
 // App component is a functional component (that is, a component defined as a function instead of as
 // an extension of the React.Component class). It is the main component of the application and is
@@ -23,81 +28,42 @@ function App() {
     const [loss, setLoss] = useState(null);
 
     // Defining additional state variables to indicate whether model is currently training, as well
-    // as if there is an error during training. 
+    // as if there is an error during training, as well as whether or not we're currently downloading
+    // the cifar-10 dataset
     const [loading, setLoading] = useState(false);
+    // const [downloading, setDownloading] = useState(false);
     const [error, setError] = useState(null);
 
     // Defining one more state variable to store training progress data/outputs to show the user.
     const [trainingProgress, setTrainingProgress] = useState([]);
-    const [taskId, setTaskId] = useState(null);
-    
-    // Defining state variable to track epoch number
-    const [currentEpoch, setCurrentEpoch] = useState(0);
 
-    // Purpose of useEffect
+    // Declaring a new websocket
+    // ws:// is the websockot protocol
+    // localhost: indicates the server is running on the same machine
+    // rest is self explanatory with regard to this line
+    const ws = new WebSocket('ws://localhost:5000/ws');
 
-    // useEffect is a React hook that allows you to perform side effects in function components. 
-    // Side effects can be data fetching, subscriptions, or manually changing the DOM in React 
-    // components.
-
-    // It takes two arguments: a function that contains the side effect logic and an optional array 
-    // of dependencies. React will re-run the side effect function whenever one of the dependencies 
-    // has changed. <useEffect(effectFunction, [dependencies]);>
-
-    // The side effect function can optionally return a cleanup function that React will call when 
-    // the component unmounts or before re-running the side effect due to changes in dependencies
-
-    // ( () => {} ). Inside the paranthesis is the arrow function syntax. This is
-    // basically saying that the first argument of useEffect (that is, effectFunction) is a function 
-    // defined as follows:
-    // () => { ... }, where () contains the parameters to the function and {...} contains the
-    // body of the function.
-    useEffect(() => {
-        let intervalId;
-        if (taskId){
-            intervalId = setInterval(pollTrainingStatus, 1000);
+    // .onmessage is an event handler that listens for messages from the server via the websocket.
+    // We're assigning to it a function to be called whenever .onmessage detects a message
+    // from the server via the websocket.
+    // The function takes an event object as a parameter, where event is a 'MessageEvent' object.
+    // Basically, everytime a message is received, a 'MessageEvent' object is created and passed to
+    // the 'onmessage' event handler as an 'event' paramaeter. This is then itself sent to the 
+    // function we're defining here.
+    ws.onmessage = function(event) {
+        const data = JSON.parse(event.data);
+        console.log('logging event itself first' + event)
+        console.log(data);
+        if (data.status === 'PROGRESS') {
+            setTrainingProgress((prev) => [...prev, {'epoch': data.epoch, 'logs': data.logs}]);
         }
-        return () => {
-            if (intervalId){
-                clearInterval(intervalId);
-            }
-        };
-    }, [taskId] // passing into dependency array, could contain other variables too, hence why
-                // it's an array
-    );
-
-    const pollTrainingStatus = async () => {
-        try{
-            const response = await axios.get('http://localhost:5000/training-status/' + taskId);
-            const data = response.data;
-            console.log(response)
-            if (data.status === 'SUCCESS'){
-                console.log('hit success in the frontend')
-                setAccuracy(data.test_accuracy);
-                setLoss(data.test_loss);
-                console.log(accuracy)
-                console.log(loss)
-                setLoading(false);
-                setTaskId(null);
-            } else if (data.status === 'PROGRESS') {
-                console.log('hit progress in the frontend')
-                print(currentEpoch)
-                if (data.epoch !== currentEpoch) {
-                    setTrainingProgress((prev) => [...prev, {'epoch': data.epoch, 'logs': data.logs}]);
-                    console.log(trainingProgress)
-                    setCurrentEpoch(data.epoch);
-                }
-            } else if (data.status === 'FAILURE') {
-                setError('Trainingfailed')
-                setLoading(false);
-                setTaskId(null);
-            }
-        } catch (err) {
-            setError(`Failed to poll training status: ${err.message}`);
+        else if (data.status === 'SUCCESS') {
+            setAccuracy(data.test_accuracy);
+            setLoss(data.test_loss);
             setLoading(false);
-            setTaskId(null);
         }
-    };
+    }
+
 
     // Here we're defining an asynchronous function named handleTrain using arrow function syntax.
     // This function takes an event object 'e' as a parameter, which is typically the event triggered
@@ -125,7 +91,6 @@ function App() {
                 batchSize: batchSize,
                 optimizer: optimizer
             });
-            setTaskId(response.data.task_id);
         } catch (err){
             setError(`Failed to train model: ${err.message}`);
             setLoading(false);

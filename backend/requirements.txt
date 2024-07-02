@@ -9,3 +9,5 @@ uvicorn
 asyncio
 celery
 redis
+websockets
+aiohttp
