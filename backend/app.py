@@ -44,7 +44,7 @@ app.add_middleware(
     allow_headers=["*"]
 )
 
-# Define a global variable to store the active WebSocket connection.
+# Define a global variable redis_client that will be used to connect to the Redis server.
 redis_client = aioredis.from_url("redis://redis:6379")
 
 # Route for the WebSocket connection. "@app.websocket(/ws)" is a decorator that defines a WebSocket
