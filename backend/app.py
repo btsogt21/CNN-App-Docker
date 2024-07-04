@@ -6,19 +6,13 @@
 # The API will accept a JSON object containing the model configuration and hyperparameters, train 
 # the model on the CIFAR-10 dataset, and return the test accuracy and loss of the model.
 # 
-# Flask Imports
-# from flask import Flask, request, jsonify
-# from flask_cors import CORS
-# from flask_socketio import SocketIO, emit
 
 # FastAPI Imports
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 
 # Celery imports
-from worker import train_model
-from celery.result import AsyncResult
+from worker.worker import train_model
 
 # uvicorn imports
 import uvicorn
@@ -40,7 +34,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],
     allow_credentials=True,
-    allow_methods=["post"],
+    allow_methods=["*"],
     allow_headers=["*"]
 )
 

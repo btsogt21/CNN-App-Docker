@@ -24,8 +24,10 @@ services:
     # command: npm run dev
   
   celery_worker:
-    build: ./backend
-    command: celery -A worker worker --loglevel=info
+    build:
+      context: ./backend
+      dockerfile: worker/Dockerfile
+    command: celery -A worker.worker worker --loglevel=info
     deploy:
       resources:
         reservations:

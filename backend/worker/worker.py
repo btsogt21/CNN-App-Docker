@@ -18,10 +18,6 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 
-# asyncio and aiohttp
-import asyncio
-import aiohttp
-
 import json
 
 # Creating a celery instance and a redis client. The Celery instance is used to create a task that will
@@ -30,8 +26,10 @@ import json
 # We can use a synchronous client here because the worker.py file is not an ASGI application and does
 # not need to handle multiple concurrent connections.
 celery = Celery('tasks', broker='redis://redis:6379/0', backend='redis://redis:6379/0')
+celery.conf.update(
+    CELERY_IMPORTS=('worker.worker',) # comma necessary to make a single item tuple
+)
 redis_client = redis.Redis(host='redis', port = 6379, db = 0)
-
 @celery.task(bind=True)
 def train_model(self, layers, units, epochs, batch_size, optimizer):
     #Loading CIFAR-10 in and splitting dataset

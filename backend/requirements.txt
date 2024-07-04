@@ -1,13 +1,8 @@
-# flask
-# flask-cors
-# flask-socketio
-numpy
-scikit-learn
 fastapi
-python-socketio
 uvicorn
 asyncio
 celery
 redis
 websockets
 aiohttp
+scikit-learn
