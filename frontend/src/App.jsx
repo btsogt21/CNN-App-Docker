@@ -37,6 +37,15 @@ function App() {
     // Defining one more state variable to store training progress data/outputs to show the user.
     const [trainingProgress, setTrainingProgress] = useState([]);
 
+
+    // Defining local state variables for form inputs.
+
+    const [inputLayers, setInputLayers] = useState(3);
+    const [inputUnits, setInputUnits] = useState([32, 64, 128]);
+    const [inputEpochs, setInputEpochs] = useState(50);
+    const [inputBatchSize, setInputBatchSize] = useState(32);
+    const [inputOptimizer, setInputOptimizer] = useState('adam');
+
     // Declaring a new websocket
     // ws:// is the websockot protocol
     // localhost: indicates the server is running on the same machine
@@ -77,6 +86,48 @@ function App() {
         setLoading(true);
         setError(null);
         setTrainingProgress([]);
+
+        if (isNaN(inputLayers) || inputLayers < 1) {
+            setError('Number of layers must be a positive integer');
+            setLoading(false);
+            return;
+        }
+        console.log(inputUnits)
+        console.log(typeof inputUnits[0])
+        if (inputUnits.some(isNaN)|| inputUnits.some(num => num < 1)) {
+            setError('Units must be a comma-separated list of positive integers');
+            setLoading(false);
+            return;
+        } 
+        if (inputUnits.length !== inputLayers) {
+            setError('Number of integers in list must match number of layers');
+            setLoading(false);
+            return;
+        }
+        if (isNaN(inputEpochs) || inputEpochs < 1) {
+            setError('Number of epochs must be a positive integer');
+            setLoading(false);
+            return;
+        }
+        if (isNaN(inputBatchSize) || inputBatchSize < 1) {
+            setError('Batch size must be a positive integer');
+            setLoading(false);
+            return;
+        }
+
+        // setLayers(inputLayers);
+        // setUnits(inputUnits);
+        // setEpochs(inputEpochs);
+        // setBatchSize(inputBatchSize);
+        // setOptimizer(inputOptimizer);
+
+        // console.log(layers);
+        // console.log(units);
+        // console.log(epochs);
+        // console.log(batchSize);
+        // console.log(optimizer);
+
+
         try {
             // Making a POST request to the backend server using axios. The POST request is made to the
             // '/train' endpoint of the backend server. The way we have Flask backend setup is so that it runs
@@ -85,17 +136,36 @@ function App() {
             // is an object with keys 'layers', 'units', 'epochs', 'batchSize', and 'optimizer'. The values of
             // these keys are the state variables defined above.
             const response = await axios.post('http://localhost:5000/train', {
-                layers: layers,
-                units: units,
-                epochs: epochs,
-                batchSize: batchSize,
-                optimizer: optimizer
+                layers: inputLayers,
+                units: inputUnits,
+                epochs: inputEpochs,
+                batchSize: inputBatchSize,
+                optimizer: inputOptimizer
             });
         } catch (err){
             setError(`Failed to train model: ${err.message}`);
             setLoading(false);
         }
     };
+
+    const handleUnitsChange = (index, value) => {
+        const newUnits = [...inputUnits];
+        newUnits[index] = value;
+        setInputUnits(newUnits);
+    };
+
+    const handleLayersChange = (value) => {
+        const numLayers = parseInt(value);
+        setInputLayers(numLayers);
+        if (numLayers > inputUnits.length) {
+            setInputUnits([...inputUnits, ...Array(numLayers - inputUnits.length).fill('')]);
+            console.log('Expanding' + inputUnits)
+        } else {
+            setInputUnits(inputUnits.slice(0, numLayers));
+            console.log('Contracting' + inputUnits)
+        }
+    };
+
     return (
         <div className="App">
             <h1>CIFAR-10 Model Training UI</h1>
@@ -112,27 +182,38 @@ function App() {
                     the 'layers' state variable.
                     'onChange={(e) => setLayers(parseInt(e.target.value))}' updates the 'layers' state
                     when the input field value changes. */}
-                    <input type="number" value={layers} onChange={(e) => setLayers(parseInt(e.target.value))} />
+                    {/* <input type="number" value={inputLayers} onChange={(e) => isNaN(e.target.value) ? setInputLayers(NaN) : setInputLayers(parseInt(e.target.value))} /> */}
+                    <input type="number" value={inputLayers} onChange={(e) => handleLayersChange(parseInt(e.target.value))} />
                 </div>
-                <div>
+                {Array.from({ length: inputLayers }).map((_, index) => (
+                    <div key={index}>
+                        <label>Units in Layer {index + 1}: </label>
+                        <input
+                            type="number"
+                            value={inputUnits[index]}
+                            onChange={(e) => handleUnitsChange(index, parseInt(e.target.value))}
+                        />
+                    </div>
+                ))}
+                {/* <div>
                     <label>Units in Layers (comma-separated): </label>
                     <input
                         type="text"
                         value={units.join(',')}
-                        onChange={(e) => setUnits(e.target.value.split(',').map(Number))}
+                        onChange={(e) => setInputUnits(e.target.value.split(",").map(Number))}
                     />
-                </div>
+                </div> */}
                 <div>
                     <label>Number of Epochs: </label>
-                    <input type="number" value={epochs} onChange={(e) => setEpochs(parseInt(e.target.value))} />
+                    <input type="number" value={inputEpochs} onChange={(e) => setInputEpochs(parseInt(e.target.value))} />
                 </div>
                 <div>
                     <label>Batch Size: </label>
-                    <input type="number" value={batchSize} onChange={(e) => setBatchSize(parseInt(e.target.value))} />
+                    <input type="number" value={inputBatchSize} onChange={(e) => setInputBatchSize(parseInt(e.target.value))} />
                 </div>
                 <div>
                     <label>Optimizer: </label>
-                    <select value={optimizer} onChange={(e) => setOptimizer(e.target.value)}>
+                    <select value={inputOptimizer} onChange={(e) => setInputOptimizer(e.target.value)}>
                         <option value="adam">Adam</option>
                         <option value="sgd">SGD</option>
                         <option value="rmsprop">RMSprop</option>

@@ -34,6 +34,7 @@ redis_client = redis.Redis(host='redis', port = 6379, db = 0)
 
 @celery.task(bind=True)
 def train_model(self, layers, units, epochs, batch_size, optimizer):
+    print(f"Training model with layers={layers}, units={units}, epochs={epochs}, batch_size={batch_size}, optimizer={optimizer}")
     #Loading CIFAR-10 in and splitting dataset
     (x_train, y_train), (x_test, y_test) = tf.keras.datasets.cifar10.load_data()
 
@@ -74,12 +75,22 @@ def train_model(self, layers, units, epochs, batch_size, optimizer):
     model.add(Dropout(0.5))
     model.add(Dense(10, activation='softmax'))
 
+    print("Model Summary:")
+    model.summary()
+
     # Compile the model
     model.compile(
         optimizer=optimizer,
         loss='sparse_categorical_crossentropy',
         metrics=['accuracy']
     )
+
+    print("Final Training Parameters:")
+    print(f"Layers: {model.layers}")
+    print(f"Units: {[layer.filters if isinstance(layer, Conv2D) else layer.units for layer in model.layers if isinstance(layer, (Conv2D, Dense))]}")
+    print(f"Epochs: {epochs}")
+    print(f"Batch Size: {batch_size}")
+    print(f"Optimizer: {model.optimizer}")
 
     # Define a custom callback to track the training progress.
     # Note: Turns out the default output from tensorflow averages training accuracy and loss over 
