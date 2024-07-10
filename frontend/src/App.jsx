@@ -50,28 +50,45 @@ function App() {
     // ws:// is the websockot protocol
     // localhost: indicates the server is running on the same machine
     // rest is self explanatory with regard to this line
-    const ws = new WebSocket('ws://localhost:5000/ws');
 
     // .onmessage is an event handler that listens for messages from the server via the websocket.
     // We're assigning to it a function to be called whenever .onmessage detects a message
     // from the server via the websocket.
     // The function takes an event object as a parameter, where event is a 'MessageEvent' object.
     // Basically, everytime a message is received, a 'MessageEvent' object is created and passed to
-    // the 'onmessage' event handler as an 'event' paramaeter. This is then itself sent to the 
+    // the 'onmessage' event handler as an 'event' parameter. This is then itself sent to the 
     // function we're defining here.
-    ws.onmessage = function(event) {
-        const data = JSON.parse(event.data);
-        console.log('logging event itself first' + event)
-        console.log(data);
-        if (data.status === 'PROGRESS') {
-            setTrainingProgress((prev) => [...prev, {'epoch': data.epoch, 'logs': data.logs}]);
-        }
-        else if (data.status === 'SUCCESS') {
-            setAccuracy(data.test_accuracy);
-            setLoss(data.test_loss);
-            setLoading(false);
-        }
-    }
+    useEffect(() => {
+        console.log('use effect running again')
+        const ws = new WebSocket('ws://localhost:5000/ws');
+        ws.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            console.log('logging event itself first' + event)
+            console.log(data);
+            if (data.status === 'PROGRESS') {
+                setTrainingProgress((prev) => [...prev, {'epoch': data.epoch, 'logs': data.logs}]);
+            }
+            else if (data.status === 'SUCCESS') {
+                setAccuracy(data.test_accuracy);
+                setLoss(data.test_loss);
+                setLoading(false);
+            }
+        };
+
+        ws.onerror = function(error){
+            console.error('WebSocket Error: ' + error);
+        };
+        ws.onclose = function(event){
+            console.log('WebSocket connection is closed now.');
+        };
+
+        return () => {
+            console.log("returning from useEffect")
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.close();
+            }
+        };
+    }, []);
 
 
     // Here we're defining an asynchronous function named handleTrain using arrow function syntax.
@@ -149,20 +166,26 @@ function App() {
     };
 
     const handleUnitsChange = (index, value) => {
+        console.log('units change, index: ' + index + ' value: ' + value)
         const newUnits = [...inputUnits];
-        newUnits[index] = value;
+        newUnits[index] = parseInt(value) || '';
         setInputUnits(newUnits);
     };
 
+    // add handling for non integer values
     const handleLayersChange = (value) => {
-        const numLayers = parseInt(value);
-        setInputLayers(numLayers);
-        if (numLayers > inputUnits.length) {
-            setInputUnits([...inputUnits, ...Array(numLayers - inputUnits.length).fill('')]);
-            console.log('Expanding' + inputUnits)
-        } else {
-            setInputUnits(inputUnits.slice(0, numLayers));
-            console.log('Contracting' + inputUnits)
+        const numLayers = parseInt(value) || '';
+        if (numLayers === '' || (numLayers>=1 && numLayers<=3)){
+            setInputLayers(numLayers);
+            if (numLayers > inputUnits.length) {
+                setInputUnits([...inputUnits, ...Array(numLayers - inputUnits.length).fill('')]);
+                console.log('Expanding ' + inputUnits)
+                console.log('Expanding 2 ' + [...inputUnits, ...Array(numLayers - inputUnits.length).fill('')])
+            } else {
+                setInputUnits(inputUnits.slice(0, numLayers));
+                console.log('Contracting ' + inputUnits)
+                console.log('Contracting #2 ' + inputUnits.slice(0, numLayers))
+            }
         }
     };
 
@@ -183,7 +206,11 @@ function App() {
                     'onChange={(e) => setLayers(parseInt(e.target.value))}' updates the 'layers' state
                     when the input field value changes. */}
                     {/* <input type="number" value={inputLayers} onChange={(e) => isNaN(e.target.value) ? setInputLayers(NaN) : setInputLayers(parseInt(e.target.value))} /> */}
-                    <input type="number" value={inputLayers} onChange={(e) => handleLayersChange(parseInt(e.target.value))} />
+                    <input
+                        type="number" 
+                        value={inputLayers} 
+                        onInput={(e) => handleLayersChange(e.target.value)} 
+                        min="1" max="3"/>
                 </div>
                 {Array.from({ length: inputLayers }).map((_, index) => (
                     <div key={index}>
@@ -191,25 +218,25 @@ function App() {
                         <input
                             type="number"
                             value={inputUnits[index]}
-                            onChange={(e) => handleUnitsChange(index, parseInt(e.target.value))}
+                            onChange={(e) => handleUnitsChange(index, e.target.value)}
+                            min="1" max="1024"
                         />
                     </div>
                 ))}
-                {/* <div>
-                    <label>Units in Layers (comma-separated): </label>
-                    <input
-                        type="text"
-                        value={units.join(',')}
-                        onChange={(e) => setInputUnits(e.target.value.split(",").map(Number))}
-                    />
-                </div> */}
                 <div>
                     <label>Number of Epochs: </label>
-                    <input type="number" value={inputEpochs} onChange={(e) => setInputEpochs(parseInt(e.target.value))} />
+                    <input 
+                        type="number" 
+                        value={inputEpochs} onChange={(e) => setInputEpochs(parseInt(e.target.value) || '')} 
+                        min = "0" max = "200"/>
                 </div>
                 <div>
                     <label>Batch Size: </label>
-                    <input type="number" value={inputBatchSize} onChange={(e) => setInputBatchSize(parseInt(e.target.value))} />
+                    <input 
+                        type="number" 
+                        value={inputBatchSize} 
+                        onChange={(e) => setInputBatchSize(parseInt(e.target.value) || '')} 
+                        min = "16" max = "512" />
                 </div>
                 <div>
                     <label>Optimizer: </label>
