@@ -1,8 +1,13 @@
 # flask
 # flask-cors
 # flask-socketio
-numpy<2.0
+numpy
 scikit-learn
 fastapi
 python-socketio
 uvicorn
+asyncio
+celery
+redis
+websockets
+aiohttp

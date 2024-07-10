@@ -1,1 +1,12 @@
+Incomplete:
+
 1. Switch from FlaskAPI to FastAPI
+
+2. 
+
+
+Complete:
+
+1. Create .dockerignore
+
+2. create .gitignore for root folder

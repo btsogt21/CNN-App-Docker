@@ -18,4 +18,4 @@ EXPOSE 5173
 
 # CMD ["nginx", "-g", "daemon off;"]
 
-CMD ["npm", "run", "dev"]
+CMD sh -c 'until nc -z backend 5000; do echo "Waiting for backend to be ready..."; sleep 1; done; npm run dev'

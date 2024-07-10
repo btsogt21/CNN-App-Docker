@@ -4,7 +4,11 @@ WORKDIR /backend
 
 COPY requirements.txt requirements.txt
 
-RUN pip install --ignore-installed --no-cache-dir blinker -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# --ignore-installed
+
+# blinker
 
 COPY . .
 

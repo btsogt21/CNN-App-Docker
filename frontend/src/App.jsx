@@ -1,21 +1,11 @@
-import { useEffect, useState } from 'react'
-import './App.css'
-import axios from 'axios'
-import io from 'socket.io-client'
+// currently two active console.log, this is to confirm that websocket is receiving MessaveEvent object
+// and passing it onto the onmessage event handler and its associated function.
 
-const socket = io('http://localhost:5000')
+import { useEffect, useState } from 'react';
+import './App.css';
+import axios from 'axios';
+import useWebSocket, { readyState }  from 'react-use-websocket';
 
-socket.on('connect', () => {
-    console.log('Connected to backend server');
-});
-
-socket.on('disconnect', () => {
-    console.log('Disconnected from backend server');
-});
-
-socket.on('connect_error', (error) => {
-    console.error('Failed to connect to backend server:', error);
-});
 
 // App component is a functional component (that is, a component defined as a function instead of as
 // an extension of the React.Component class). It is the main component of the application and is
@@ -38,68 +28,68 @@ function App() {
     const [loss, setLoss] = useState(null);
 
     // Defining additional state variables to indicate whether model is currently training, as well
-    // as if there is an error during training. 
+    // as if there is an error during training, as well as whether or not we're currently downloading
+    // the cifar-10 dataset
     const [loading, setLoading] = useState(false);
+    // const [downloading, setDownloading] = useState(false);
     const [error, setError] = useState(null);
 
     // Defining one more state variable to store training progress data/outputs to show the user.
-    const [trainingProgress, setTrainingProgress] = useState(0);
+    const [trainingProgress, setTrainingProgress] = useState([]);
 
-    // Purpose of useEffect
 
-    // useEffect is a React hook that allows you to perform side effects in function components. 
-    // Side effects can be data fetching, subscriptions, or manually changing the DOM in React 
-    // components.
+    // Defining local state variables for form inputs.
 
-    // It takes two arguments: a function that contains the side effect logic and an optional array 
-    // of dependencies. React will re-run the side effect function whenever one of the dependencies 
-    // has changed. <useEffect(effectFunction, [dependencies]);>
+    const [inputLayers, setInputLayers] = useState(3);
+    const [inputUnits, setInputUnits] = useState([32, 64, 128]);
+    const [inputEpochs, setInputEpochs] = useState(50);
+    const [inputBatchSize, setInputBatchSize] = useState(32);
+    const [inputOptimizer, setInputOptimizer] = useState('adam');
 
-    // The side effect function can optionally return a cleanup function that React will call when 
-    // the component unmounts or before re-running the side effect due to changes in dependencies
+    // Declaring a new websocket
+    // ws:// is the websockot protocol
+    // localhost: indicates the server is running on the same machine
+    // rest is self explanatory with regard to this line
 
-    // The logic here is that we want to listen for the 'training_progress' event from the backend
-    // via the websocket connection. We then update the 'trainingProgress' state variable with the
-    // progress data from the event by calling the 'setTrainingProgress' function which adds the
-    // progress data to the 'trainingProgress' array.
-
-    // Useful if we want to keep a history of all the progress updates received over time for each 
-    // epoch.
-
-    // ( () => {} ). Inside the paranthesis is the arrow function syntax. This is
-    // basically saying that the first argument of useEffect (that is, effectFunction) is a function 
-    // defined as follows:
-    // () => { ... }, where () contains the parameters to the function and {...} contains the
-    // body of the function.
+    // .onmessage is an event handler that listens for messages from the server via the websocket.
+    // We're assigning to it a function to be called whenever .onmessage detects a message
+    // from the server via the websocket.
+    // The function takes an event object as a parameter, where event is a 'MessageEvent' object.
+    // Basically, everytime a message is received, a 'MessageEvent' object is created and passed to
+    // the 'onmessage' event handler as an 'event' parameter. This is then itself sent to the 
+    // function we're defining here.
     useEffect(() => {
-        // listening for the 'training_progress' event, then defining a callback function to 
-        // trigger when the event is received. The callback function takes a 'data' parameter. This
-        // 'data' parameter is received from the server when it sends a message of type 'training_progress'.
-        // The socket.on method then receives this data and passes it to the callback function as an argument.
-        // The name 'data' is arbitrary. You could name it anything and it would still represent the 
-        // data sent alongside the 'training_progress' event.
-        socket.on('training_progress', (data) => {
-            // Updating the 'trainingProgress' state variable with the progress data from the event.
-            // This works by calling the state updater function 'setTrainingProgress' with the previous
-            // state as an argument. Naming choice of the argument is arbitrary here as React invokes
-            // the function with the previous state as an argument. That's just how React works when 
-            // you call a state updater function. As for '[...prev, data]', you can think of
-            // it as an array where '...prev' indicates that all elements of the previous state array
-            // are still present, and we're just adding the new progress data 'data.progress' to the
-            // end.
-            setTrainingProgress((prev) => [...prev, data]);
-            console.log('Training progress data received:', data);
-        });
-
-        // Returning a cleanup function that will be called when the component unmounts or when the 
-        // useEffect hook is run again. This is important because we don't want to keep listening 
-        // for the 'training_progress' event when the component is no longer in use. This is a good 
-        // practice to avoid memory leaks.
-        return () => {
-            socket.off('training_progress');
+        console.log('use effect running again')
+        const ws = new WebSocket('ws://localhost:5000/ws');
+        ws.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            console.log('logging event itself first' + event)
+            console.log(data);
+            if (data.status === 'PROGRESS') {
+                setTrainingProgress((prev) => [...prev, {'epoch': data.epoch, 'logs': data.logs}]);
+            }
+            else if (data.status === 'SUCCESS') {
+                setAccuracy(data.test_accuracy);
+                setLoss(data.test_loss);
+                setLoading(false);
+            }
         };
-    }, []
-    );
+
+        ws.onerror = function(error){
+            console.error('WebSocket Error: ' + error);
+        };
+        ws.onclose = function(event){
+            console.log('WebSocket connection is closed now.');
+        };
+
+        return () => {
+            console.log("returning from useEffect")
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.close();
+            }
+        };
+    }, []);
+
 
     // Here we're defining an asynchronous function named handleTrain using arrow function syntax.
     // This function takes an event object 'e' as a parameter, which is typically the event triggered
@@ -110,10 +100,51 @@ function App() {
         // calling 'preventDefault()' will prevent the form from being submitted. This means we can handle
         // the form submission or button click programmatically ourselves via javascript.
         e.preventDefault();
-
         setLoading(true);
         setError(null);
         setTrainingProgress([]);
+
+        if (isNaN(inputLayers) || inputLayers < 1) {
+            setError('Number of layers must be a positive integer');
+            setLoading(false);
+            return;
+        }
+        console.log(inputUnits)
+        console.log(typeof inputUnits[0])
+        if (inputUnits.some(isNaN)|| inputUnits.some(num => num < 1)) {
+            setError('Units must be a comma-separated list of positive integers');
+            setLoading(false);
+            return;
+        } 
+        if (inputUnits.length !== inputLayers) {
+            setError('Number of integers in list must match number of layers');
+            setLoading(false);
+            return;
+        }
+        if (isNaN(inputEpochs) || inputEpochs < 1) {
+            setError('Number of epochs must be a positive integer');
+            setLoading(false);
+            return;
+        }
+        if (isNaN(inputBatchSize) || inputBatchSize < 1) {
+            setError('Batch size must be a positive integer');
+            setLoading(false);
+            return;
+        }
+
+        // setLayers(inputLayers);
+        // setUnits(inputUnits);
+        // setEpochs(inputEpochs);
+        // setBatchSize(inputBatchSize);
+        // setOptimizer(inputOptimizer);
+
+        // console.log(layers);
+        // console.log(units);
+        // console.log(epochs);
+        // console.log(batchSize);
+        // console.log(optimizer);
+
+
         try {
             // Making a POST request to the backend server using axios. The POST request is made to the
             // '/train' endpoint of the backend server. The way we have Flask backend setup is so that it runs
@@ -122,47 +153,42 @@ function App() {
             // is an object with keys 'layers', 'units', 'epochs', 'batchSize', and 'optimizer'. The values of
             // these keys are the state variables defined above.
             const response = await axios.post('http://localhost:5000/train', {
-                layers: layers,
-                units: units,
-                epochs: epochs,
-                batchSize: batchSize,
-                optimizer: optimizer
+                layers: inputLayers,
+                units: inputUnits,
+                epochs: inputEpochs,
+                batchSize: inputBatchSize,
+                optimizer: inputOptimizer
             });
-            // Using the aforementioned 'setAccuracy' and 'setLoss' functions to update the accuracy and loss
-            // with data from the response object
-            setAccuracy(response.data.test_accuracy);
-            setLoss(response.data.test_loss);
         } catch (err){
             setError(`Failed to train model: ${err.message}`);
-        } finally {
             setLoading(false);
         }
-
-    // Mock data to be sent to backend
-    // const data = {
-    //     layers: layers,
-    //     units: units,
-    //     epochs: epochs,
-    //     batchSize: batchSize,
-    //     optimizer: optimizer
-    //   };
-
-    // console.log("Data to be sent to backend", JSON.stringify(data, null, 2));
-
-    // Mock response from backend
-    // const mockResponse = {
-    //     data: {
-    //         accuracy: 0.85,
-    //         loss: 0.35
-    //     }
-    // };
-
-    // console.log("Response from backend", JSON.stringify(mockResponse, null, 2));
-
-    // setAccuracy(mockResponse.data.accuracy);
-    // setLoss(mockResponse.data.loss);
-
     };
+
+    const handleUnitsChange = (index, value) => {
+        console.log('units change, index: ' + index + ' value: ' + value)
+        const newUnits = [...inputUnits];
+        newUnits[index] = parseInt(value) || '';
+        setInputUnits(newUnits);
+    };
+
+    // add handling for non integer values
+    const handleLayersChange = (value) => {
+        const numLayers = parseInt(value) || '';
+        if (numLayers === '' || (numLayers>=1 && numLayers<=3)){
+            setInputLayers(numLayers);
+            if (numLayers > inputUnits.length) {
+                setInputUnits([...inputUnits, ...Array(numLayers - inputUnits.length).fill('')]);
+                console.log('Expanding ' + inputUnits)
+                console.log('Expanding 2 ' + [...inputUnits, ...Array(numLayers - inputUnits.length).fill('')])
+            } else {
+                setInputUnits(inputUnits.slice(0, numLayers));
+                console.log('Contracting ' + inputUnits)
+                console.log('Contracting #2 ' + inputUnits.slice(0, numLayers))
+            }
+        }
+    };
+
     return (
         <div className="App">
             <h1>CIFAR-10 Model Training UI</h1>
@@ -179,27 +205,42 @@ function App() {
                     the 'layers' state variable.
                     'onChange={(e) => setLayers(parseInt(e.target.value))}' updates the 'layers' state
                     when the input field value changes. */}
-                    <input type="number" value={layers} onChange={(e) => setLayers(parseInt(e.target.value))} />
-                </div>
-                <div>
-                    <label>Units in Layers (comma-separated): </label>
+                    {/* <input type="number" value={inputLayers} onChange={(e) => isNaN(e.target.value) ? setInputLayers(NaN) : setInputLayers(parseInt(e.target.value))} /> */}
                     <input
-                        type="text"
-                        value={units.join(',')}
-                        onChange={(e) => setUnits(e.target.value.split(',').map(Number))}
-                    />
+                        type="number" 
+                        value={inputLayers} 
+                        onInput={(e) => handleLayersChange(e.target.value)} 
+                        min="1" max="3"/>
                 </div>
+                {Array.from({ length: inputLayers }).map((_, index) => (
+                    <div key={index}>
+                        <label>Units in Layer {index + 1}: </label>
+                        <input
+                            type="number"
+                            value={inputUnits[index]}
+                            onChange={(e) => handleUnitsChange(index, e.target.value)}
+                            min="1" max="1024"
+                        />
+                    </div>
+                ))}
                 <div>
                     <label>Number of Epochs: </label>
-                    <input type="number" value={epochs} onChange={(e) => setEpochs(parseInt(e.target.value))} />
+                    <input 
+                        type="number" 
+                        value={inputEpochs} onChange={(e) => setInputEpochs(parseInt(e.target.value) || '')} 
+                        min = "0" max = "200"/>
                 </div>
                 <div>
                     <label>Batch Size: </label>
-                    <input type="number" value={batchSize} onChange={(e) => setBatchSize(parseInt(e.target.value))} />
+                    <input 
+                        type="number" 
+                        value={inputBatchSize} 
+                        onChange={(e) => setInputBatchSize(parseInt(e.target.value) || '')} 
+                        min = "16" max = "512" />
                 </div>
                 <div>
                     <label>Optimizer: </label>
-                    <select value={optimizer} onChange={(e) => setOptimizer(e.target.value)}>
+                    <select value={inputOptimizer} onChange={(e) => setInputOptimizer(e.target.value)}>
                         <option value="adam">Adam</option>
                         <option value="sgd">SGD</option>
                         <option value="rmsprop">RMSprop</option>
@@ -221,7 +262,7 @@ function App() {
                         in the array and index represents the item's index*/}
                         {trainingProgress.map((progress, index) => (
                             <li key={index}>
-                                Epoch {progress.epoch + 1}: {JSON.stringify(progress.logs)}
+                                Epoch {progress.epoch}: {JSON.stringify(progress.logs)}
                             </li>
                         ))}
                     </ul>

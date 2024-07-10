@@ -11,10 +11,37 @@ services:
               count: 1
               capabilities: [gpu]
     environment:
-    - NVIDIA_VISIBLE_DEVICES=all
-    - FLASK_ENV=development
+      - NVIDIA_VISIBLE_DEVICES=all
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - redis
+  celery_worker:
+    build: ./backend
+    command: celery -A worker worker --loglevel=info
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - redis
+      - backend
+  redis:
+    image: redis:latest
+    ports:
+      - "6379:6379"
+  
   frontend:
     build: ./frontend
     ports:
       - "5173:5173"
+    depends_on:
+      - backend
     # command: npm run dev
