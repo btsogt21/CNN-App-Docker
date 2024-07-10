@@ -1,0 +1,7 @@
+backend/.venv/
+frontend/node_modules/
+
+backend/.gitignore
+frontend/.gitignore
+.gitignore
+plans.txt
