@@ -1,7 +1,7 @@
 // currently two active console.log, this is to confirm that websocket is receiving MessaveEvent object
 // and passing it onto the onmessage event handler and its associated function.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import './App.css';
 import axios from 'axios';
 import useWebSocket, { readyState }  from 'react-use-websocket';
@@ -19,11 +19,11 @@ function App() {
     // Defining state variables. 'useState' initalizes the layers state variable to 3.
     // Then, it provides a function 'setLayers' to update it. Similar initialization for the other state
     // variables.
-    const [layers, setLayers] = useState(3);
-    const [units, setUnits] = useState([32, 64, 128]);
-    const [epochs, setEpochs] = useState(50);
-    const [batchSize, setBatchSize] = useState(32);
-    const [optimizer, setOptimizer] = useState('adam');
+    // const [layers, setLayers] = useState(3);
+    // const [units, setUnits] = useState([32, 64, 128]);
+    // const [epochs, setEpochs] = useState(50);
+    // const [batchSize, setBatchSize] = useState(32);
+    // const [optimizer, setOptimizer] = useState('adam');
     const [accuracy, setAccuracy] = useState(null);
     const [loss, setLoss] = useState(null);
 
@@ -33,6 +33,7 @@ function App() {
     const [loading, setLoading] = useState(false);
     // const [downloading, setDownloading] = useState(false);
     const [error, setError] = useState(null);
+    const [wsError, setWsError] = useState(null)
 
     // Defining one more state variable to store training progress data/outputs to show the user.
     const [trainingProgress, setTrainingProgress] = useState([]);
@@ -45,6 +46,8 @@ function App() {
     const [inputEpochs, setInputEpochs] = useState(50);
     const [inputBatchSize, setInputBatchSize] = useState(32);
     const [inputOptimizer, setInputOptimizer] = useState('adam');
+
+    const wsRef = useRef(null);
 
     // Declaring a new websocket
     // ws:// is the websockot protocol
@@ -60,32 +63,46 @@ function App() {
     // function we're defining here.
     useEffect(() => {
         console.log('use effect running again')
-        const ws = new WebSocket('ws://localhost:5000/ws');
-        ws.onmessage = function(event) {
-            const data = JSON.parse(event.data);
-            console.log('logging event itself first' + event)
-            console.log(data);
-            if (data.status === 'PROGRESS') {
-                setTrainingProgress((prev) => [...prev, {'epoch': data.epoch, 'logs': data.logs}]);
+        const connect = () => {
+            try {
+                wsRef.current = new WebSocket('ws://localhost:5000/ws');
+                wsRef.current.onmessage = function(event) {
+                    const data = JSON.parse(event.data);
+                    console.log('logging event itself first' + event)
+                    console.log(data);
+                    if (data.status === 'PROGRESS') {
+                        setTrainingProgress((prev) => [...prev, {'epoch': data.epoch, 'logs': data.logs}]);
+                    }
+                    else if (data.status === 'SUCCESS') {
+                        setAccuracy(data.test_accuracy);
+                        setLoss(data.test_loss);
+                        setLoading(false);
+                    }
+                    else if (data.status === 'ERROR'){
+                        setError('Error during training: ${data.message}')
+                        setLoading(false);
+                    }
+                };
+        
+                wsRef.current.onerror = function(error){
+                    console.error('Asynchronous error causing socket close after websocket connection has already been established: ' + error);
+                    setWsError('Asynchronous error causing socket close after websocket connection has already been established: ' + error + ' message: ' + error.message);
+                };
+                wsRef.current.onclose = function(event){
+                    console.log('WebSocket connection has closed. Attempting to reconnect in ten seconds');
+                    setTimeout(connect, 10000);
+                };
+            } catch (error){
+                console.error('Synchronous error while setting up websocket connection: ' + error);
+                setWsError('Synchronous error while setting up websocket connection: ' + error + ' message: ' + error.message);
             }
-            else if (data.status === 'SUCCESS') {
-                setAccuracy(data.test_accuracy);
-                setLoss(data.test_loss);
-                setLoading(false);
-            }
         };
-
-        ws.onerror = function(error){
-            console.error('WebSocket Error: ' + error);
-        };
-        ws.onclose = function(event){
-            console.log('WebSocket connection is closed now.');
-        };
+        connect();
 
         return () => {
             console.log("returning from useEffect")
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.close();
+            if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                wsRef.current.close();
             }
         };
     }, []);
@@ -100,67 +117,65 @@ function App() {
         // calling 'preventDefault()' will prevent the form from being submitted. This means we can handle
         // the form submission or button click programmatically ourselves via javascript.
         e.preventDefault();
-        setLoading(true);
-        setError(null);
-        setTrainingProgress([]);
-
-        if (isNaN(inputLayers) || inputLayers < 1) {
-            setError('Number of layers must be a positive integer');
-            setLoading(false);
-            return;
-        }
-        console.log(inputUnits)
-        console.log(typeof inputUnits[0])
-        if (inputUnits.some(isNaN)|| inputUnits.some(num => num < 1)) {
-            setError('Units must be a comma-separated list of positive integers');
-            setLoading(false);
-            return;
-        } 
-        if (inputUnits.length !== inputLayers) {
-            setError('Number of integers in list must match number of layers');
-            setLoading(false);
-            return;
-        }
-        if (isNaN(inputEpochs) || inputEpochs < 1) {
-            setError('Number of epochs must be a positive integer');
-            setLoading(false);
-            return;
-        }
-        if (isNaN(inputBatchSize) || inputBatchSize < 1) {
-            setError('Batch size must be a positive integer');
-            setLoading(false);
-            return;
-        }
-
-        // setLayers(inputLayers);
-        // setUnits(inputUnits);
-        // setEpochs(inputEpochs);
-        // setBatchSize(inputBatchSize);
-        // setOptimizer(inputOptimizer);
-
-        // console.log(layers);
-        // console.log(units);
-        // console.log(epochs);
-        // console.log(batchSize);
-        // console.log(optimizer);
-
-
         try {
+            setLoading(true);
+            setError(null);
+            setTrainingProgress([]);
+    
+            if (isNaN(inputLayers) || inputLayers < 1) {
+                setError('Number of layers must be a positive integer');
+                setLoading(false);
+                return;
+            }
+            if (inputUnits.some(isNaN)|| inputUnits.some(num => num < 1)) {
+                setError('Units must be a comma-separated list of positive integers');
+                setLoading(false);
+                return;
+            } 
+            if (inputUnits.length !== inputLayers) {
+                setError('Number of integers in list must match number of layers');
+                setLoading(false);
+                return;
+            }
+            if (isNaN(inputEpochs) || inputEpochs < 1) {
+                setError('Number of epochs must be a positive integer');
+                setLoading(false);
+                return;
+            }
+            if (isNaN(inputBatchSize) || inputBatchSize < 1) {
+                setError('Batch size must be a positive integer');
+                setLoading(false);
+                return;
+            }
             // Making a POST request to the backend server using axios. The POST request is made to the
             // '/train' endpoint of the backend server. The way we have Flask backend setup is so that it runs
             // on local machine IP '127.0.0.1' and port 5000, although this may end up changing later.
             // The second argument to the 'post' method is the data we want to send to the server. This data
             // is an object with keys 'layers', 'units', 'epochs', 'batchSize', and 'optimizer'. The values of
             // these keys are the state variables defined above.
-            const response = await axios.post('http://localhost:5000/train', {
+            await axios.post('http://localhost:5000/train', {
                 layers: inputLayers,
                 units: inputUnits,
                 epochs: inputEpochs,
                 batchSize: inputBatchSize,
                 optimizer: inputOptimizer
             });
-        } catch (err){
-            setError(`Failed to train model: ${err.message}`);
+        } catch (err){ // more specific than just a broad error i.e catch specific types of exceptions
+            // axios exceptions
+            let errorMessage = 'Failed to train model: ';
+            if (err.response && err.response.data && err.response.data.detail) {
+                const details = err.response.data.detail;
+                if (Array.isArray(details) && details.length > 0) {
+                    errorMessage += details.map(detail => detail.msg).join(', ');
+                } else {
+                    errorMessage += JSON.stringify(details);
+                }
+            } else {
+                errorMessage += err.message;
+            }
+            // consider splitting the below into one condition for when the error is from the POST request
+            // and another for when the error is from before the POST request
+            setError('Some error occurred while attempting to train, could be prior to POST request or before POST request, discern based on format of error message' + errorMessage);
             setLoading(false);
         }
     };
@@ -209,7 +224,7 @@ function App() {
                     <input
                         type="number" 
                         value={inputLayers} 
-                        onInput={(e) => handleLayersChange(e.target.value)} 
+                        onChange={(e) => handleLayersChange(e.target.value)} 
                         min="1" max="3"/>
                 </div>
                 {Array.from({ length: inputLayers }).map((_, index) => (
@@ -227,7 +242,8 @@ function App() {
                     <label>Number of Epochs: </label>
                     <input 
                         type="number" 
-                        value={inputEpochs} onChange={(e) => setInputEpochs(parseInt(e.target.value) || '')} 
+                        value={inputEpochs} 
+                        onChange={(e) => setInputEpochs(parseInt(e.target.value) || '')} 
                         min = "0" max = "200"/>
                 </div>
                 <div>
@@ -240,7 +256,9 @@ function App() {
                 </div>
                 <div>
                     <label>Optimizer: </label>
-                    <select value={inputOptimizer} onChange={(e) => setInputOptimizer(e.target.value)}>
+                    <select 
+                        value={inputOptimizer} 
+                        onChange={(e) => setInputOptimizer(e.target.value)}>
                         <option value="adam">Adam</option>
                         <option value="sgd">SGD</option>
                         <option value="rmsprop">RMSprop</option>
@@ -254,6 +272,7 @@ function App() {
             the subsequent <p> tag is generated. If it's not, we just ignore whatever comes after
             'error' in the curly brackets */}
             {error && <p style={{ color: 'red' }}>{error}</p>}
+            {wsError && <p style = {{color: 'red'}}>{wsError}</p>}
             {trainingProgress.length > 0 && (
                 <div>
                     <h2>Training Progress</h2>

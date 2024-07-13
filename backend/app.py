@@ -12,10 +12,11 @@
 # from flask_socketio import SocketIO, emit
 
 # FastAPI Imports
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-
+from fastapi.exceptions import RequestValidationError
+from models import TrainModelRequest
 # Celery imports
 from worker import train_model
 from celery.result import AsyncResult
@@ -30,6 +31,19 @@ import json
 
 # Create a FastAPI instance
 app = FastAPI()
+
+# Exception handler to handle validation errors. When a validation error occurs, this function
+# returns a JSONResponse with status code 422 (Unprocessable Entity) and the details of the validation
+# errors. "request: Request" is the incoming request that caused the validation error, and "exc: RequestValidationError"
+# is the exception that was raised.
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    errors = []
+    for error in exc.errors():
+        errors.append({"loc": error["loc"],
+                       "msg": error["msg"],
+                       "type": error["type"]})
+    return JSONResponse(status_code=422, content={"detail": errors})
 
 # .add_middleware() is a method that allows us to add middleware to a FastAPI application.
 # Middleware is a function that runs before and after every request.
@@ -98,6 +112,7 @@ async def redis_listener():
                 await broadcast(json.dumps(message_data))
         except Exception as e:
             print(f"Redis error: {e}")
+            # raise
         await asyncio.sleep(0.01)
 
 # Decorator that runs the startup_event() function when the "startup" event is triggered. 
@@ -113,15 +128,24 @@ async def startup_event():
 # endpoint. The function accepts a JSON payload containing the model configuration and hyperparameters,
 # and then calls the train_model.delay() function from the worker.py file.
 @app.post("/train")
-async def train_model_request(payload: dict):
+async def train_model_request(payload: TrainModelRequest):
     task = train_model.delay(
-        layers = payload['layers'],
-        units = payload['units'],
-        epochs = payload['epochs'],
-        batch_size = payload['batchSize'],
-        optimizer = payload['optimizer']
+        layers = payload.layers,
+        units = payload.units,
+        epochs = payload.epochs,
+        batch_size = payload.batchSize,
+        optimizer = payload.optimizer
     )
     return {"task_id": task.id}
+
+    # task = train_model.delay(
+    #     layers = payload['layers'],
+    #     units = payload['units'],
+    #     epochs = payload['epochs'],
+    #     batch_size = payload['batchSize'],
+    #     optimizer = payload['optimizer']
+    # )
+    # return {"task_id": task.id}
 
 if __name__ == '__main__':
     uvicorn.run("app:app", host = "0.0.0.0", port = 5000, reload = True)

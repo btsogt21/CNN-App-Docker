@@ -1,5 +1,7 @@
 FROM tensorflow/tensorflow:latest-gpu
 
+RUN useradd -ms /bin/bash nonrootuser
+
 WORKDIR /backend
 
 COPY requirements.txt requirements.txt
@@ -12,9 +14,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-EXPOSE 5000
+# Change ownership of working directory
 
-ENV FLASK_APP=app.py
-ENV FLASK_ENV=development
+RUN chown -R nonrootuser:nonrootuser /backend
+
+USER nonrootuser
+
+EXPOSE 5000
 
 CMD ["python", "app.py"]
