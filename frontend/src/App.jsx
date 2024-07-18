@@ -52,7 +52,7 @@ function App() {
     // Declaring a new websocket
     // ws:// is the websockot protocol
     // localhost: indicates the server is running on the same machine
-    // rest is self explanatory with regard to this line
+    // rest of the URL is self-explanatory.
 
     // .onmessage is an event handler that listens for messages from the server via the websocket.
     // We're assigning to it a function to be called whenever .onmessage detects a message
@@ -64,8 +64,28 @@ function App() {
     useEffect(() => {
         console.log('use effect running again')
         const connect = () => {
+            // the try block here is used to catch exceptions thrown while attempting to establish
+            // a websocket connection, notably errors that occur synchronously, such as if the URL
+            // is invalid or if the server is unreachable due to network issues. Errors arising within
+            // the route itself are not caught by this try block. Instead, they are handBled by the onerror
+            // event handler defined below. This is because as long as we don't encounter or invalid URLs,
+            // we can expect the WebSocket object to have been created. If the websocket object has been
+            // created, then the onerror event handler will be called if there are any issues with the
+            // connection, such as the .accept() method not being called or facing some issue on the
+            // server side.
+            // 'ws://localhost:500/ws' - triggers onerror handler
+            // 'invalid-url' - triggers nothing until we quit the application, at which point we receive:
+            // "WebSocket connection to 'ws://localhost:5173/invalid-url' failed: " errors.
+            // 'ws://invalid-url' - triggers onerror handler. Error message says 
+            // "Websocket connection to ws://invalid-url failed: "
+            // 'wss://localhost:5000/ws' - triggers onerror handler
+            // `ws://${longUrl}` - triggers onerror handler
             try {
-                wsRef.current = new WebSocket('ws://localhost:5000/ws');
+                const longUrl = 'w'.repeat(65536);
+                wsRef.current = new WebSocket(`ws://localhost:5000/ws`);
+                wsRef.current.onopen = () => {
+                    console.log('WebSocket connection established')
+                }
                 wsRef.current.onmessage = function(event) {
                     const data = JSON.parse(event.data);
                     console.log('logging event itself first' + event)
@@ -79,26 +99,26 @@ function App() {
                         setLoading(false);
                     }
                     else if (data.status === 'ERROR'){
-                        setError('Error during training: ${data.message}')
+                        setError(`Error during training: ${data.message}`)
                         setLoading(false);
                     }
                 };
         
                 wsRef.current.onerror = function(error){
-                    console.error('Asynchronous error causing socket close after websocket connection has already been established: ' + error);
-                    setWsError('Asynchronous error causing socket close after websocket connection has already been established: ' + error + ' message: ' + error.message);
+                    console.error(`Asynchronous error after websocket established: ${error}. Associated message: ${error.message}`);
+                    setWsError(`Asynchronous error after websocket established: ${error}`);
                 };
                 wsRef.current.onclose = function(event){
                     console.log('WebSocket connection has closed. Attempting to reconnect in ten seconds');
                     setTimeout(connect, 10000);
                 };
             } catch (error){
-                console.error('Synchronous error while setting up websocket connection: ' + error);
-                setWsError('Synchronous error while setting up websocket connection: ' + error + ' message: ' + error.message);
+                console.error(`Websocket connection error (synchronous): ${error}. Associated message: ${error.message}`);
+                setWsError(`Websocket connection error: ${error}`);
             }
         };
         connect();
-
+        // cleanup function to close the websocket connection when the component is unmounted
         return () => {
             console.log("returning from useEffect")
             if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -118,10 +138,13 @@ function App() {
         // the form submission or button click programmatically ourselves via javascript.
         e.preventDefault();
         try {
+            // Setting loading state variable to true, error to null, and trainingProgress to an empty array.
+            // setloading(True) will cause the 'Train Model' button to display 'Training...' and become
+            // unclickable instead of 'Train Model'
             setLoading(true);
             setError(null);
             setTrainingProgress([]);
-    
+            // Checking if the input values are valid. If not, setting an error message and returning early.
             if (isNaN(inputLayers) || inputLayers < 1) {
                 setError('Number of layers must be a positive integer');
                 setLoading(false);
@@ -165,8 +188,13 @@ function App() {
             let errorMessage = 'Failed to train model: ';
             if (err.response && err.response.data && err.response.data.detail) {
                 const details = err.response.data.detail;
+                console.log(details)
                 if (Array.isArray(details) && details.length > 0) {
-                    errorMessage += details.map(detail => detail.msg).join(', ');
+                    // console.log(details[0]['loc'])
+                    // console.log(details[0]['msg'])
+                    // console.log(details[0]['type'])
+                    // errorMessage += details.map(detail => detail.msg).join(', ');
+                    errorMessage += JSON.stringify(details[0])
                 } else {
                     errorMessage += JSON.stringify(details);
                 }
@@ -175,7 +203,7 @@ function App() {
             }
             // consider splitting the below into one condition for when the error is from the POST request
             // and another for when the error is from before the POST request
-            setError('Some error occurred while attempting to train, could be prior to POST request or before POST request, discern based on format of error message' + errorMessage);
+            setError(`Some error occurred while attempting to train, could be prior to POST request or before POST request, discern based on format of error message: ${errorMessage}`);
             setLoading(false);
         }
     };
@@ -203,6 +231,17 @@ function App() {
             }
         }
     };
+    
+    const testErrorHandler = async () => {
+        try {
+            const response = await axios.get('http://localhost:5000/test-error');
+            console.log(response);
+        }
+        catch (err) {
+            console.log(`Error message: ${err.message}, Error response details: ${err.response.data.detail}`);
+            setError(`Error message: ${err.message}, Error response details: ${err.response.data.detail}`);
+        }
+    }
 
     return (
         <div className="App">
@@ -294,6 +333,7 @@ function App() {
                     <p>Test Loss: {loss}</p>
                 </div>
             )}
+            <button onClick={testErrorHandler}>Test Error Handler</button>
         </div>
     );
 }

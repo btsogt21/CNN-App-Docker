@@ -1,1 +1,4 @@
 plans.txt
+
+# env file for ELK-B stack
+.env

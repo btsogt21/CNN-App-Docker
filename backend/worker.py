@@ -10,7 +10,6 @@ import redis
 # preprocessing imports
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
-from tensorflow.keras.preprocessing.image import ImageDataGenerator
 import numpy as np
 
 # model building and training imports
@@ -18,9 +17,8 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 
-# asyncio and aiohttp
-import asyncio
-import aiohttp
+import signal
+import sys
 
 import json
 
@@ -29,8 +27,32 @@ import json
 # here is synchronous, as opposed to the asynchronous redis client used in the backend/app.py file.
 # We can use a synchronous client here because the worker.py file is not an ASGI application and does
 # not need to handle multiple concurrent connections.
-celery = Celery('tasks', broker='redis://redis:6379/0', backend='redis://redis:6379/0')
+# celery = Celery('task', broker='redis://redis:6379/0', backend='redis://redis:6379/0')
+# broker parameter is used to specify the message broker url that celery uses to send and receive
+# messages regarding task execution. The above specifies that the broker is a Redis instance running
+# on the host 'redis' and port 6379.
+# the backend parameter is used to specify the result backend url that celery uses to store task results
+# and states. The above specifies that the backend is a Redis instance running on the host 'redis'
+# and port 6379.
+# 'task' is the name of the current module. The first argument to Celery() is always the name of the
+# application module, and this one in specific is used to organize and reference tasks. 
+# The broker and backend parameters are optional, but they are used here to specify
+# the Redis instance that will be used for message passing and storing task results. We had it previously
+# when we were using Redis to publish updates to the frontend.
+celery = Celery()
 redis_client = redis.Redis(host='redis', port = 6379, db = 0)
+
+# Handling the closing of the celery worker when a SIGINT or SIGTERM signal is received.
+def handle_exit(signal, frame):
+    print('Received exit signal, shutting down...')
+    celery.control.shutdown()  # Gracefully shutdown the Celery worker
+    sys.exit(0)
+
+# Associate the handle_exit function with the SIGINT and SIGTERM signals.
+def setup_signal_handlers():
+    signal.signal(signal.SIGINT, handle_exit)  # Handle Ctrl + C
+    signal.signal(signal.SIGTERM, handle_exit)  # Handle termination signal
+
 
 @celery.task(bind=True)
 def train_model(self, layers, units, epochs, batch_size, optimizer):
@@ -128,3 +150,7 @@ def train_model(self, layers, units, epochs, batch_size, optimizer):
         response = {"status": "ERROR", "message": str(e)}
         redis_client.publish('model_updates', json.dumps(response))
         raise
+
+if __name__ == '__main__':
+    setup_signal_handlers()
+    celery.worker_main()

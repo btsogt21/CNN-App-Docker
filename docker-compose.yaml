@@ -1,4 +1,220 @@
+# Setting up persistent storage for different components of the setup. Ensures data remains available
+# between container restarts.
+# volumes:
+#   # volume for storing certs
+#   certs:
+#     # using local storage driver to store.
+#     driver: local
+#   # Elasticsearch data
+#   esdata01:
+#     driver: local
+#   # kibana data
+#   kibanadata:
+#     driver: local
+#   # metricbeat data
+#   metricbeatdata01:
+#     driver: local
+#   # filebeat data
+#   filebeatdata01:
+#     driver: local
+#   # logstash data
+#   logstashdata01:
+#     driver: local
+
+
+# # configuring network settings for the containers.
+# networks:
+#   # creating default network named elastic. not marked as external, thus it is managed by docker
+#   # and isolated from other networks.
+#   default:
+#     name: elastic
+#     external: false
+
+# # This section configures individual services (containers) making up the application:
+# services:
+#   # Service responsible for setting up and configuring elasticsearch.
+#   setup:
+#     image: docker.elastic.co/elasticsearch/elasticsearch:${STACK_VERSION}
+#     # mounts the previously defined certs volume to a path inside the container, thus providing
+#     # access to the certs.
+#     volumes:
+#       - certs:/usr/share/elasticsearch/config/certs
+#     # runs the container as the root user, that is user id 0.
+#     user: "0"
+#     # Executing series of commands inside container.
+#     # First, checking if elasticsearch and kibana have passwords set in the .env file. Exits if not.
+#     # Next, creates certificate authority and certificates if not already present using 
+#     # elasticsearch's certutil tool.
+#     # Next, generates SSL certs for elasticsearch and kibana based on a config file 'instances.yml'
+#     # which is dynamically created.
+#     # Then, adjusts permissions of cert files and directories to secure access.
+#     # Next, periodically checks if Elasticsearch is available by making an HTTPS request to the
+#     # local instance.
+#     # Finally, sets the password for the kibana_system user in Elasticsearch and outputs 'All Done!'
+#     command: >
+#       bash -c '
+#         if [ x${ELASTIC_PASSWORD} == x ]; then
+#           echo "Set the ELASTIC_PASSWORD environment variable in the .env file";
+#           exit 1;
+#         elif [ x${KIBANA_PASSWORD} == x ]; then
+#           echo "Set the KIBANA_PASSWORD environment variable in the .env file";
+#           exit 1;
+#         fi;
+#         if [ ! -f config/certs/ca.zip ]; then
+#           echo "Creating CA";
+#           bin/elasticsearch-certutil ca --silent --pem -out config/certs/ca.zip;
+#           unzip config/certs/ca.zip -d config/certs;
+#         fi;
+#         if [ ! -f config/certs/certs.zip ]; then
+#           echo "Creating certs";
+#           echo -ne \
+#           "instances:\n"\
+#           "  - name: es01\n"\
+#           "    dns:\n"\
+#           "      - es01\n"\
+#           "      - localhost\n"\
+#           "    ip:\n"\
+#           "      - 127.0.0.1\n"\
+#           "  - name: kibana\n"\
+#           "    dns:\n"\
+#           "      - kibana\n"\
+#           "      - localhost\n"\
+#           "    ip:\n"\
+#           "      - 127.0.0.1\n"\
+#           > config/certs/instances.yml;
+#           bin/elasticsearch-certutil cert --silent --pem -out config/certs/certs.zip --in config/certs/instances.yml --ca-cert config/certs/ca/ca.crt --ca-key config/certs/ca/ca.key;
+#           unzip config/certs/certs.zip -d config/certs;
+#         fi;
+#         echo "Setting file permissions"
+#         chown -R root:root config/certs;
+#         find . -type d -exec chmod 750 \{\} \;;
+#         find . -type f -exec chmod 640 \{\} \;;
+#         echo "Waiting for Elasticsearch availability";
+#         until curl -s --cacert config/certs/ca/ca.crt https://es01:9200 | grep -q "missing authentication credentials"; do sleep 30; done;
+#         echo "Setting kibana_system password";
+#         until curl -s -X POST --cacert config/certs/ca/ca.crt -u "elastic:${ELASTIC_PASSWORD}" -H "Content-Type: application/json" https://es01:9200/_security/user/kibana_system/_password -d "{\"password\":\"${KIBANA_PASSWORD}\"}" | grep -q "^{}"; do sleep 10; done;
+#         echo "All done!";'
+
+#     # Configuring healthcheck for the container. Checks if the certs are present in the expected
+#     # location.
+#     healthcheck:
+#       test: ["CMD-SHELL", "[ -f config/certs/es01/es01.crt ]"]
+#       interval: 1s
+#       timeout: 5s
+#       retries: 120
+
+#   # Service for running single-node cluster of Elasticsearch for testing
+#   es01:
+#     # setting up dependency on setup service. This ensures that the setup service completes
+#     # successfully before starting this service.
+#     depends_on:
+#       setup:
+#         condition: service_healthy
+#     image: docker.elastic.co/elasticsearch/elasticsearch:${STACK_VERSION}
+#     # Assigning label to the service for better log management.
+#     labels:
+#       co.elastic.logs/module: elasticsearch
+#     # Mounting certs and data volumes to the container. Certs to access SSL certificates and
+#     # esdata01 for storing data persistently.
+#     volumes:
+#       - certs:/usr/share/elasticsearch/config/certs
+#       - esdata01:/usr/share/elasticsearch/data
+#     # Port mapping.
+#     ports:
+#       - ${ES_PORT}:9200
+#     # Setting environment variables for the container.
+#     environment:
+#       - node.name=es01 # setting node name to es01
+#       - cluster.name=${CLUSTER_NAME} # setting cluster name
+#       - discovery.type=single-node # setting discovery type to single-node
+#       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD} # setting elastic password
+#       - bootstrap.memory_lock=true # locking memory to prevent swapping, crucial to performance
+#       - xpack.security.enabled=true # enabling x pack security
+#       - xpack.security.http.ssl.enabled=true # enabling SSL/TLS for http
+#       - xpack.security.http.ssl.key=certs/es01/es01.key # setting path to SSL key for HTTP
+#       - xpack.security.http.ssl.certificate=certs/es01/es01.crt # setting path to SSL certificate for HTTP
+#       - xpack.security.http.ssl.certificate_authorities=certs/ca/ca.crt # setting path to Cert Authority for HTTP
+#       - xpack.security.transport.ssl.enabled=true # enabling SSL/TLS for transport (internal) communications
+#       - xpack.security.transport.ssl.key=certs/es01/es01.key # setting path to SSL key for transport
+#       - xpack.security.transport.ssl.certificate=certs/es01/es01.crt # setting path to SSL certificate for transport
+#       - xpack.security.transport.ssl.certificate_authorities=certs/ca/ca.crt # setting path to Cert Authority for transport
+#       - xpack.security.transport.ssl.verification_mode=certificate # setting verification mode for transport
+#       - xpack.license.self_generated.type=${LICENSE} # setting license type from env variable
+#     mem_limit: ${ES_MEM_LIMIT} # setting memory limit for the container from env variable
+#     # disabling memory swapping for process, both soft and hard limits
+#     ulimits:
+#       memlock:
+#         soft: -1
+#         hard: -1
+#     # setting healthcheck for the container. Checks if the container is ready to accept requests.
+#     healthcheck:
+#       test:
+#         [
+#           "CMD-SHELL",
+#           "curl -s --cacert config/certs/ca/ca.crt https://localhost:9200 | grep -q 'missing authentication credentials'",
+#         ]
+#       interval: 10s
+#       timeout: 10s
+#       retries: 120
+
 services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.14.3-amd64
+    environment:
+      - discovery.type=single-node
+      - logger.level = DEBUG
+      - xpack.security.enabled=false
+    ports:
+      - "9200:9200"
+    networks:
+      - elk
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: on-failure
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.14.3
+    volumes:
+      - ./logstash/pipeline:/usr/share/logstash/pipeline
+    ports:
+      - "5001:5000"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - elk
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.14.3
+    ports:
+      - "5601:5601"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - elk
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5601 || exit 1"]
+      interval: 10s
+
+  redis:
+    image: redis:latest
+    ports:
+      - "6379:6379"     
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5 
+
   backend:
     build: ./backend
     ports:
@@ -15,33 +231,60 @@ services:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
+      logstash:
+        condition: service_healthy
+    stop_grace_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+
   celery_worker:
     build: ./backend
     command: celery -A worker worker --loglevel=info
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
     depends_on:
-      - redis
-      - backend
-  redis:
-    image: redis:latest
-    ports:
-      - "6379:6379"
-  
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    stop_grace_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+
   frontend:
     build: ./frontend
     ports:
       - "5173:5173"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     # command: npm run dev
+    stop_grace_period: 10s
+
+networks:
+  elk:
+    driver: bridge

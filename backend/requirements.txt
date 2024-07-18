@@ -12,3 +12,4 @@ redis
 websockets
 aiohttp
 pydantic
+structlog
