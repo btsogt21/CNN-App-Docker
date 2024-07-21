@@ -158,52 +158,52 @@
 #       retries: 120
 
 services:
-  elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.14.3-amd64
-    environment:
-      - discovery.type=single-node
-      - logger.level = DEBUG
-      - xpack.security.enabled=false
-    ports:
-      - "9200:9200"
-    networks:
-      - elk
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9200 || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: on-failure
+  # elasticsearch:
+  #   image: docker.elastic.co/elasticsearch/elasticsearch:8.14.3-amd64
+  #   environment:
+  #     - discovery.type=single-node
+  #     - logger.level = DEBUG
+  #     - xpack.security.enabled=false
+  #   ports:
+  #     - "9200:9200"
+  #   networks:
+  #     - elk
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:9200 || exit 1"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #   restart: on-failure
 
-  logstash:
-    image: docker.elastic.co/logstash/logstash:8.14.3
-    volumes:
-      - ./logstash/pipeline:/usr/share/logstash/pipeline
-    ports:
-      - "5001:5000"
-    depends_on:
-      elasticsearch:
-        condition: service_healthy
-    networks:
-      - elk
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000 || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+  # logstash:
+  #   image: docker.elastic.co/logstash/logstash:8.14.3
+  #   volumes:
+  #     - ./logstash/pipeline:/usr/share/logstash/pipeline
+  #   ports:
+  #     - "5001:5000"
+  #   depends_on:
+  #     elasticsearch:
+  #       condition: service_healthy
+  #   networks:
+  #     - elk
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:5000 || exit 1"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
   
-  kibana:
-    image: docker.elastic.co/kibana/kibana:8.14.3
-    ports:
-      - "5601:5601"
-    depends_on:
-      elasticsearch:
-        condition: service_healthy
-    networks:
-      - elk
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5601 || exit 1"]
-      interval: 10s
+  # kibana:
+  #   image: docker.elastic.co/kibana/kibana:8.14.3
+  #   ports:
+  #     - "5601:5601"
+  #   depends_on:
+  #     elasticsearch:
+  #       condition: service_healthy
+  #   networks:
+  #     - elk
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:5601 || exit 1"]
+  #     interval: 10s
 
   redis:
     image: redis:latest
@@ -233,8 +233,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-      logstash:
-        condition: service_healthy
+      # logstash:
+      #   condition: service_healthy
     stop_grace_period: 10s
     logging:
       driver: "json-file"
@@ -242,7 +242,10 @@ services:
         max-size: "10m"
         max-file: "3"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000 || exit 1"]
+      # test: ['CMD', 'curl', '-f', 'http://localhost:5000/health || exit 1'] # could also be 
+      # http://backend:5000/health if things start going wrong in production, that is, when deployed
+      # over kubernetes
+      test: curl -f http://localhost:5000/health || exit 1
       interval: 10s
       timeout: 5s
       retries: 5

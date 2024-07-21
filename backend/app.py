@@ -35,43 +35,43 @@ from models import TrainModelRequest
 import logging
 import structlog
 
-# logging.basicConfig(level=logging.INFO)
-# logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Configure structlog
-structlog.configure(
-    # List of processor functions applied to each log entry
-    processors = [
-        # This processor formats log entries as JSON objects. For example:
-        # Input: logger.info("user_login", user_id=123)
-        # Output: {"event": "user_login", "user_id": 123}
-        structlog.processors.JSONRenderer()
-    ],
-    # This specifies the type of data structure to use for storing contextual information. In this
-    # case, a standard Python dictionary is used.
-    context_class = dict,
-    # Specifies the factory to create logger instances. In this case, we integrate 'structlog' with
-    # the standard library's logging module, allowing us to use said module's configurations
-    # and handlers, making it easy to integrate with existing logging setups.
-    logger_factory = structlog.stdlib.LoggerFactory(),
-    # Specifies the wrapper class to use for loggers. In this case, we use the 'BoundLogger' class
-    # to wrap around standard library loggers, providing additional features like context binding.
-    # Example: Enables us to bind context to loggers, so we can automatically include context
-    # in ever log message.
-    # Input
-    # logger = logger.bind(user_id=123)
-    # logger.info("action_performed", action = "login")
-    # Output:
-    # {"user_id":123, "event":"action_performed", "action":"login"}
-    wrapper_class = structlog.stdlib.BoundLogger,
-    # Boolean flag that determines whether to cache the logger after its first use. Here we set it to
-    # True which means that the first time we log a message, the logger is created and cached for
-    # future use, reducing overhead.
-    cache_logger_on_first_use=True
-)
+# structlog.configure(
+#     # List of processor functions applied to each log entry
+#     processors = [
+#         # This processor formats log entries as JSON objects. For example:
+#         # Input: logger.info("user_login", user_id=123)
+#         # Output: {"event": "user_login", "user_id": 123}
+#         structlog.processors.JSONRenderer()
+#     ],
+#     # This specifies the type of data structure to use for storing contextual information. In this
+#     # case, a standard Python dictionary is used.
+#     context_class = dict,
+#     # Specifies the factory to create logger instances. In this case, we integrate 'structlog' with
+#     # the standard library's logging module, allowing us to use said module's configurations
+#     # and handlers, making it easy to integrate with existing logging setups.
+#     logger_factory = structlog.stdlib.LoggerFactory(),
+#     # Specifies the wrapper class to use for loggers. In this case, we use the 'BoundLogger' class
+#     # to wrap around standard library loggers, providing additional features like context binding.
+#     # Example: Enables us to bind context to loggers, so we can automatically include context
+#     # in ever log message.
+#     # Input
+#     # logger = logger.bind(user_id=123)
+#     # logger.info("action_performed", action = "login")
+#     # Output:
+#     # {"user_id":123, "event":"action_performed", "action":"login"}
+#     wrapper_class = structlog.stdlib.BoundLogger,
+#     # Boolean flag that determines whether to cache the logger after its first use. Here we set it to
+#     # True which means that the first time we log a message, the logger is created and cached for
+#     # future use, reducing overhead.
+#     cache_logger_on_first_use=True
+# )
 
 # Retrieves a logger instance configured according to the structlog configuration we made earlier.
-logger = structlog.get_logger()
+# logger = structlog.get_logger()
 
 
 # Define a global variable redis_client that will be used to connect to the Redis server.
@@ -129,20 +129,20 @@ app.add_middleware(
 # that takes the 'request' and returns a response. This is used to call the next middleware or the route
 # handler. For example, 'request' contains details about the incoming HTTP request, and 'call_next'
 # is used to proceed to the next step in the request handling process.
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
-    # Log the start of the request, including the HTTP method and path.
-    # Example:
-    # Get request to 'api/v1/resource' would output:
-    # {"event": "request_start", "method": "GET", "path": "/api/v1/resource"}
-    logger.info("request_start", method = request.method, path = request.url.path)
-    # Call the next middleware or the route handler to process the request. That is, passes the
-    # request to the next middleware or route handler and waits for a response. This allows
-    # logging of both the request and the reponse.
-    response = await call_next(request)
-    # Log the end of the request, including the HTTP method, path, and status code.
-    logger.info("request_end", method=request.method, path=request.url.path, status_code=response.status_code)
-    return response
+# @app.middleware("http")
+# async def log_requests(request: Request, call_next):
+#     # Log the start of the request, including the HTTP method and path.
+#     # Example:
+#     # Get request to 'api/v1/resource' would output:
+#     # {"event": "request_start", "method": "GET", "path": "/api/v1/resource"}
+#     logger.info("request_start", method = request.method, path = request.url.path)
+#     # Call the next middleware or the route handler to process the request. That is, passes the
+#     # request to the next middleware or route handler and waits for a response. This allows
+#     # logging of both the request and the reponse.
+#     response = await call_next(request)
+#     # Log the end of the request, including the HTTP method, path, and status code.
+#     logger.info("request_end", method=request.method, path=request.url.path, status_code=response.status_code)
+#     return response
 
 
 @app.exception_handler(Exception)
@@ -205,6 +205,12 @@ async def broadcast(message):
 # endpoint at the specified path. The decorated function has a websocket parameter that takes as
 # input the WebSocket connection. The function accepts the WebSocket connection and then enters a
 # loop to receive messages from the client.
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     # accept() is used to accept the WebSocket connection by
@@ -212,6 +218,7 @@ async def websocket_endpoint(websocket: WebSocket):
     # that the connection has been established. We use await
     # here so that execution is paused until the connection is accepted. By 'execution is paused'
     # we mean that the function will not proceed to the next line until the connection is accepted.
+    logger.info("WebSocket connection establishing")
     await websocket.accept()
     global active_connection
     # assigning the current websocket connection to the global variable active_connection.
