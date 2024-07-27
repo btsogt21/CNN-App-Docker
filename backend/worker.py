@@ -5,6 +5,8 @@
 
 # importing celery
 from celery import Celery
+from celery.contrib.abortable import AbortableTask
+#importing redis
 import redis
 
 # preprocessing imports
@@ -39,8 +41,8 @@ import json
 # The broker and backend parameters are optional, but they are used here to specify
 # the Redis instance that will be used for message passing and storing task results. We had it previously
 # when we were using Redis to publish updates to the frontend.
-celery = Celery()
 redis_client = redis.Redis(host='redis', port = 6379, db = 0)
+celery = Celery(backend='redis://redis:6379/0', broker='redis://redis:6379/0')
 
 # Handling the closing of the celery worker when a SIGINT or SIGTERM signal is received.
 def handle_exit(signal, frame):
@@ -54,7 +56,7 @@ def setup_signal_handlers():
     signal.signal(signal.SIGTERM, handle_exit)  # Handle termination signal
 
 
-@celery.task(bind=True)
+@celery.task(bind=True, base = AbortableTask)
 def train_model(self, layers, units, epochs, batch_size, optimizer):
     try:
         print(f"Training model with layers={layers}, units={units}, epochs={epochs}, batch_size={batch_size}, optimizer={optimizer}")

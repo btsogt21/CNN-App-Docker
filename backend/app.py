@@ -31,7 +31,7 @@ import asyncio
 import json
 import signal
 import sys
-from models import TrainModelRequest
+from models import TrainModelRequest, CancelTaskRequest
 import logging
 import structlog
 
@@ -166,7 +166,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     logger.info('here in validation exception handler')
     errors = []
     for error in exc.errors():
-        errors.append({"origin": "Input Validation Error after POST request to /train",
+        errors.append({"origin": "Input Validation Error after POST request to /train or /cancel",
                        "loc": error["loc"],
                        "msg": error["msg"],
                        "type": error["type"]})
@@ -195,6 +195,7 @@ async def redis_listener():
         except Exception as e:
             print(f"Redis error: {e}")
             # raise
+            break
 
 # broadcast() is an asynchronous function that sends a message to the active WebSocket connection.
 # It uses the .send_text() method of the WebSocket connection to send the message.
@@ -272,9 +273,19 @@ async def train_model_request(payload: TrainModelRequest):
         )
         return {"task_id": task.id}
     except Exception as e:
-        print(f"Error training model: {e}")
+        logging.error(f"Error training model: {e}")
         raise HTTPException(status_code=500, detail=f"Error running train_model.delay() and assigning it to a celery task. Exception: {e}")
 
+@app.post("/cancel")
+async def cancel_task(payload : CancelTaskRequest):
+    try:
+        logger.info(f'here in cancel task {payload.task_id}')
+        task = AsyncResult(payload.task_id)
+        task.revoke(terminate=True)
+        return {"status": "Task cancelled"}
+    except Exception as e:
+        logging.error(f"Error cancelling task: {e}")
+        raise HTTPException(status_code=500, detail=f"Error cancelling task. Exception: {e}")
 
 @app.get("/test-error")
 async def test_error():

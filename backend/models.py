@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field, field_validator
 from typing import List
+from re import compile, match
 
 class TrainModelRequest(BaseModel):
     layers: int = Field(ge=1, le=3, description="Number of convolutional layers in the model")
@@ -26,3 +27,18 @@ class TrainModelRequest(BaseModel):
             if unit < 1 or unit >1024:
                 raise ValueError('Units must be between 1 and 1024')
         return v
+    
+class CancelTaskRequest(BaseModel):
+    task_id: str
+    
+    @field_validator('task_id')
+    @classmethod
+    def validate_task_id(cls, v, values):
+        pattern = compile(r'^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$')
+        if not pattern.match(v):
+            raise ValueError('Invalid task ID')
+        return v
+
+
+    class Config:
+        extra = "forbid"

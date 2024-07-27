@@ -1,6 +1,6 @@
 # Setting up persistent storage for different components of the setup. Ensures data remains available
 # between container restarts.
-# volumes:
+volumes:
 #   # volume for storing certs
 #   certs:
 #     # using local storage driver to store.
@@ -20,6 +20,11 @@
 #   # logstash data
 #   logstashdata01:
 #     driver: local
+  backend_venv:
+    driver: local
+  frontend_node_modules: 
+    driver: local
+  
 
 
 # # configuring network settings for the containers.
@@ -217,6 +222,11 @@ services:
 
   backend:
     build: ./backend
+    user: nonrootuser
+    volumes:
+      - ./backend:/backend
+      - /backend/venv
+      - backend_venv:/backend/venv
     ports:
       - "5000:5000"
     deploy:
@@ -253,7 +263,12 @@ services:
 
   celery_worker:
     build: ./backend
-    command: celery -A worker worker --loglevel=info
+    volumes:
+      - ./backend:/backend
+      - /backend/venv
+      # - backend_venv:/backend/venv
+    command: /backend/venv/bin/celery -A worker worker --loglevel=info
+    # command: celery -A worker worker --loglevel=info
     # deploy:
     #   resources:
     #     reservations:
@@ -279,7 +294,13 @@ services:
 
 
   frontend:
+    user: node
     build: ./frontend
+    volumes:
+      - ./frontend:/frontend
+      - /frontend/node_modules
+      # - /frontend/vite.config.js
+      - frontend_node_modules:/frontend/node_modules
     ports:
       - "5173:5173"
     depends_on:
@@ -287,6 +308,7 @@ services:
         condition: service_healthy
     # command: npm run dev
     stop_grace_period: 10s
+    # command: sh -c "chown -R node:node /frontend && until nc -z backend 5000; do echo 'Waiting for backend to be ready...'; sleep 1; done; npm run dev"
 
 networks:
   elk:

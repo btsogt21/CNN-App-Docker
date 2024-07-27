@@ -13,3 +13,4 @@ websockets
 aiohttp
 pydantic
 structlog
+async_timeout

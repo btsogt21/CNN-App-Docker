@@ -49,6 +49,7 @@ const HomePage = () => {
     const timeoutRef = useRef(null);
     const failureCountRef = useRef(0);
     const reconnectAttemptRef = useRef(0);
+    const taskIDRef = useRef(null);
 
     // Defining a function that checks if the backend is available.
     const checkBackendAvailability = async () => {
@@ -248,7 +249,7 @@ const HomePage = () => {
             // The second argument to the 'post' method is the data we want to send to the server. This data
             // is an object with keys 'layers', 'units', 'epochs', 'batchSize', and 'optimizer'. The values of
             // these keys are the state variables defined above.
-            await axios.post('http://localhost:5000/train', {
+            taskIDRef.current = await axios.post('http://localhost:5000/train', {
                 layers: inputLayers,
                 units: inputUnits,
                 epochs: inputEpochs,
@@ -315,6 +316,20 @@ const HomePage = () => {
         }
     }
 
+    const handleCancel = async () => {
+        try {
+            const response = await axios.post('http://localhost:5000/cancel', {
+                task_id: taskIDRef.current.data.task_id
+            });
+            console.log(response);
+            setError('Task cancelled');
+            setLoading(false);
+        } catch (err) {
+            console.error(`Error cancelling task: ${err}`);
+            setError(`Error cancelling task: ${err}, error message: ${err.message}`);   
+        }
+    }
+
     return (
         <div className="App">
             <h1>CIFAR-10 Model Training UI</h1>
@@ -377,6 +392,9 @@ const HomePage = () => {
                 </div>
                 <button type="submit" disabled = {loading}>
                     {loading ? 'Training...' : 'Train Model'}
+                </button>
+                <button type = "button" onClick = {handleCancel} disabled = {!loading}>
+                    Cancel Training
                 </button>
             </form>
             {/*  below syntax is shorthand for an if statement. For example, if 'error' is truthy
