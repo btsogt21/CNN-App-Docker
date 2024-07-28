@@ -9,6 +9,6 @@
 # is passed correctly.
 
 #change ownership of /frontend directory
-chown -R node:node /frontend
+# chown -R node:node /frontend
 
 exec /usr/bin/tini -- "$@"

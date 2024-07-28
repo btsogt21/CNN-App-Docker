@@ -33,7 +33,7 @@ import signal
 import sys
 from models import TrainModelRequest, CancelTaskRequest
 import logging
-import structlog
+# import structlog
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

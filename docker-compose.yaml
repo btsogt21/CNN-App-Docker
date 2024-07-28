@@ -266,7 +266,7 @@ services:
     volumes:
       - ./backend:/backend
       - /backend/venv
-      # - backend_venv:/backend/venv
+      - backend_venv:/backend/venv
     command: /backend/venv/bin/celery -A worker worker --loglevel=info
     # command: celery -A worker worker --loglevel=info
     # deploy:
