@@ -1,28 +1,36 @@
-# META
-
-# Currently 1 active print statement as part of callback
-
-
-# importing celery
+# Importing celery
 from celery import Celery
 from celery.contrib.abortable import AbortableTask
-#importing redis
+
+# Importing redis
 import redis
 
-# preprocessing imports
+# Model building and training imports
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
-import numpy as np
-
-# model building and training imports
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 
+# Local imports
+from loggingConfig import configure_logging
+
+# Other imports:
 import signal
 import sys
-
 import json
+import os
+import logging
+import numpy as np
+
+# Configure Logging
+configure_logging()
+logger = logging.getLogger(__name__)
+
+# Environment Variables
+REDIS_URL = os.getenv('REDIS_URL', 'redis://redis:6379/0')
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', REDIS_URL)
+CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', REDIS_URL)
 
 # Creating a celery instance and a redis client. The Celery instance is used to create a task that will
 # train the model, whereas the redis client is used to publish updates to the frontend. The redis client
@@ -41,12 +49,12 @@ import json
 # The broker and backend parameters are optional, but they are used here to specify
 # the Redis instance that will be used for message passing and storing task results. We had it previously
 # when we were using Redis to publish updates to the frontend.
-redis_client = redis.Redis(host='redis', port = 6379, db = 0)
-celery = Celery(backend='redis://redis:6379/0', broker='redis://redis:6379/0')
+redis_client = redis.Redis.from_url(REDIS_URL)
+celery = Celery('tasks', backend=CELERY_RESULT_BACKEND, broker=CELERY_BROKER_URL)
 
 # Handling the closing of the celery worker when a SIGINT or SIGTERM signal is received.
 def handle_exit(signal, frame):
-    print('Received exit signal, shutting down...')
+    logger.info('Received exit signal, shutting down...')
     celery.control.shutdown()  # Gracefully shutdown the Celery worker
     sys.exit(0)
 
@@ -59,7 +67,7 @@ def setup_signal_handlers():
 @celery.task(bind=True, base = AbortableTask)
 def train_model(self, layers, units, epochs, batch_size, optimizer):
     try:
-        print(f"Training model with layers={layers}, units={units}, epochs={epochs}, batch_size={batch_size}, optimizer={optimizer}")
+        logger.info(f"Training model with layers={layers}, units={units}, epochs={epochs}, batch_size={batch_size}, optimizer={optimizer}")
         #Loading CIFAR-10 in and splitting dataset
         (x_train, y_train), (x_test, y_test) = tf.keras.datasets.cifar10.load_data()
 
@@ -83,9 +91,6 @@ def train_model(self, layers, units, epochs, batch_size, optimizer):
         )
 
         datagen.fit(x_train)
-
-        train_generator = datagen.flow(x_train, y_train, batch_size = batch_size)
-        val_generator = tf.data.Dataset.from_tensor_slices((x_val, y_val)).batch(batch_size)
         test_generator = tf.data.Dataset.from_tensor_slices((x_test, y_test)).batch(batch_size)
 
         # Build model
@@ -100,7 +105,7 @@ def train_model(self, layers, units, epochs, batch_size, optimizer):
         model.add(Dropout(0.5))
         model.add(Dense(10, activation='softmax'))
 
-        print("Model Summary:")
+        logger.info("Model Summary:")
         model.summary()
 
         # Compile the model
@@ -110,12 +115,12 @@ def train_model(self, layers, units, epochs, batch_size, optimizer):
             metrics=['accuracy']
         )
 
-        print("Final Training Parameters:")
-        print(f"Layers: {model.layers}")
-        print(f"Units: {[layer.filters if isinstance(layer, Conv2D) else layer.units for layer in model.layers if isinstance(layer, (Conv2D, Dense))]}")
-        print(f"Epochs: {epochs}")
-        print(f"Batch Size: {batch_size}")
-        print(f"Optimizer: {model.optimizer}")
+        logger.info("Final Training Parameters:")
+        logger.info(f"Layers: {model.layers}")
+        logger.info(f"Units: {[layer.filters if isinstance(layer, Conv2D) else layer.units for layer in model.layers if isinstance(layer, (Conv2D, Dense))]}")
+        logger.info(f"Epochs: {epochs}")
+        logger.info(f"Batch Size: {batch_size}")
+        logger.info(f"Optimizer: {model.optimizer}")
 
         # Define a custom callback to track the training progress.
         # Note: Turns out the default output from tensorflow averages training accuracy and loss over 
@@ -128,27 +133,19 @@ def train_model(self, layers, units, epochs, batch_size, optimizer):
 
             def on_epoch_end(self, epoch, logs=None):
                 logs = logs or {}
-                print (f" Epoch {epoch + 1}: logs={logs}")
+                logger.info (f" Epoch {epoch + 1}: logs={logs}")
                 update = {'status': "PROGRESS", 'epoch': epoch + 1, 'logs': logs}
                 redis_client.publish('model_updates', json.dumps(update))
 
             def get_total_accuracy(self):
                 return np.sum(self.batch_accuracies)
-        
-        history = model.fit(
-            train_generator,
-            epochs=epochs,
-            validation_data=val_generator,
-            callbacks=[TrainingCallback()],
-
-        )
 
         # Evaluate the model on the test set
         test_loss, test_accuracy = model.evaluate(test_generator)
-        response = {"status": "SUCCESS", 'test_accuracy': test_accuracy, 'test_loss': test_loss}
+        response = {"status": "SUCCESS", 'test_accuracy': float(test_accuracy), 'test_loss': (test_loss)}
         redis_client.publish('model_updates', json.dumps(response))
     except Exception as e:
-        print(f"An error occurred during training.{e}")
+        logger.error(f"An error occurred during training.{e}")
         response = {"status": "ERROR", "message": str(e)}
         redis_client.publish('model_updates', json.dumps(response))
         raise

@@ -28,9 +28,6 @@ COPY pyproject.toml poetry.lock README.md ./
 # Install dependencies
 RUN poetry bundle venv --only=main /backend/venv
 
-# Copy the rest of the application
-# COPY . .
-
 # Runtime stage base image.
 FROM tensorflow/tensorflow:latest-gpu
 
@@ -43,8 +40,6 @@ WORKDIR /backend
 RUN apt-get update && apt-get install -y --no-install-recommends curl tini && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
-
-# COPY requirements.txt requirements.txt
 
 # Copy installed packages and application from builder stage
 COPY --from=builder /backend /backend
@@ -60,23 +55,9 @@ RUN echo "import sys; sys.path = [p for p in sys.path if '/backend/venv' in p or
 # first
 ENV PYTHONNUNBUFFERED=1
 
-# RUN python -m venv --system-site-packages venv && \
-#     . venv/bin/activate && \
-#     pip install --no-cache-dir -r requirements.txt
-
-# RUN pip install --no-cache-dir -r requirements.txt
-
-# --ignore-installed
-
-# blinker
-
-# COPY . .
-
-# COPY wait-for-it.sh /wait-for-it.sh
-
-# RUN chmod +x /wait-for-it.sh
-
 COPY entrypoint.sh /entrypoint.sh
+
+COPY . .
 
 RUN chmod +x /entrypoint.sh
 
@@ -88,10 +69,8 @@ RUN chown -R nonrootuser:nonrootuser /backend
 
 USER nonrootuser
 
-ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT ["/usr/bin/tini", "--"]
 
 EXPOSE 5000
 
 CMD ["./venv/bin/python", "app.py"]
-
-# CMD ["python", "app.py"]

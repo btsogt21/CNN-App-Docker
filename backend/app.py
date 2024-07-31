@@ -1,16 +1,3 @@
-# META
-
-# Two active print statements currently, both for exceptions.
-
-# Description: This file contains the code for the Flask API that will be used to train the model. 
-# The API will accept a JSON object containing the model configuration and hyperparameters, train 
-# the model on the CIFAR-10 dataset, and return the test accuracy and loss of the model.
-# 
-# Flask Imports
-# from flask import Flask, request, jsonify
-# from flask_cors import CORS
-# from flask_socketio import SocketIO, emit
-
 # FastAPI Imports
 from fastapi import FastAPI, WebSocket, HTTPException, Request, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,60 +5,42 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 
 # Celery import
-from worker import train_model
 from celery.result import AsyncResult
-from contextlib import asynccontextmanager
 
-# uvicorn imports
+# Uvicorn imports
 import uvicorn
 
-# Other importsas
+# Redis import
 import redis.asyncio as aioredis
+
+# Other imports
 import asyncio
 import json
 import signal
 import sys
-from models import TrainModelRequest, CancelTaskRequest
+from contextlib import asynccontextmanager
+import os
 import logging
-# import structlog
 
-logging.basicConfig(level=logging.INFO)
+# Internal imports
+from models import TrainModelRequest, CancelTaskRequest
+from worker import train_model
+from loggingConfig import configure_logging
+
+# Environment Variables
+REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379")
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
+
+# Logging imports and config
+
+# Call this function to configure logging. This function removes any existing handlers from the root
+# logger, sets the log level to INFO, creates a StreamHandler that writes log messages to stdout, sets
+# 
+configure_logging()
+
+# Then use logging as usual
 logger = logging.getLogger(__name__)
-
-# Configure structlog
-# structlog.configure(
-#     # List of processor functions applied to each log entry
-#     processors = [
-#         # This processor formats log entries as JSON objects. For example:
-#         # Input: logger.info("user_login", user_id=123)
-#         # Output: {"event": "user_login", "user_id": 123}
-#         structlog.processors.JSONRenderer()
-#     ],
-#     # This specifies the type of data structure to use for storing contextual information. In this
-#     # case, a standard Python dictionary is used.
-#     context_class = dict,
-#     # Specifies the factory to create logger instances. In this case, we integrate 'structlog' with
-#     # the standard library's logging module, allowing us to use said module's configurations
-#     # and handlers, making it easy to integrate with existing logging setups.
-#     logger_factory = structlog.stdlib.LoggerFactory(),
-#     # Specifies the wrapper class to use for loggers. In this case, we use the 'BoundLogger' class
-#     # to wrap around standard library loggers, providing additional features like context binding.
-#     # Example: Enables us to bind context to loggers, so we can automatically include context
-#     # in ever log message.
-#     # Input
-#     # logger = logger.bind(user_id=123)
-#     # logger.info("action_performed", action = "login")
-#     # Output:
-#     # {"user_id":123, "event":"action_performed", "action":"login"}
-#     wrapper_class = structlog.stdlib.BoundLogger,
-#     # Boolean flag that determines whether to cache the logger after its first use. Here we set it to
-#     # True which means that the first time we log a message, the logger is created and cached for
-#     # future use, reducing overhead.
-#     cache_logger_on_first_use=True
-# )
-
-# Retrieves a logger instance configured according to the structlog configuration we made earlier.
-# logger = structlog.get_logger()
+logger.info("Starting logging")
 
 
 # Define a global variable redis_client that will be used to connect to the Redis server.
@@ -86,25 +55,22 @@ redis_client = None
 # redis server is also stateless, thus not requiring the same shutdown procedures as the redis client.
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    try:
-        global redis_client
-        redis_client = aioredis.from_url("redis://redis:6379")
-        asyncio.create_task(redis_listener())
-        logger.info("Application starting...")
-        yield
-    except Exception as e:
-        logger.error(f"Error connecting to Redis: {e}")
-        # raise
-    finally:
+    global redis_client
+    retries = 0
+    while retries > 5:
         try:
-            if redis_client:
-                await redis_client.close()
-                logger.info("Redis connection closed.")
-        except asyncio.CancelledError:
-            logger.info("Lifespan context manager cancelled.")
+            global redis_client
+            redis_client = aioredis.from_url(REDIS_URL)
+            asyncio.create_task(redis_listener())
+            logger.info("Application starting...")
+            break
         except Exception as e:
-            logger.error(f"Error during Redis client closure: {e}")
-            # raise
+            retries += 1
+            logger.warning(f"{retries} attempt to connect to Redis failed, retrying : {e}", exc_info=True)
+    yield
+    if redis_client:
+        await redis_client.close()
+        logger.info("Redis connection closed.")
 
 # Create a FastAPI instance
 app = FastAPI(lifespan=lifespan)
@@ -116,44 +82,27 @@ app = FastAPI(lifespan=lifespan)
 # authorization headers, TLS client certificates, etc.) to go through.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["POST", "GET"],
     allow_headers=["*"]
 )
 
-# This decorator registers a middleware function that runs for every HTTP request.
-# For example, the middleware is executed for each incoming HTTP request, allowing us to log details
-# about the request and response. The middleware function takes two arguments: 'request' and 
-# 'call_next.' 'request' represents the incoming HTTP request. 'call_next' is a callable (i.e function)
-# that takes the 'request' and returns a response. This is used to call the next middleware or the route
-# handler. For example, 'request' contains details about the incoming HTTP request, and 'call_next'
-# is used to proceed to the next step in the request handling process.
-# @app.middleware("http")
-# async def log_requests(request: Request, call_next):
-#     # Log the start of the request, including the HTTP method and path.
-#     # Example:
-#     # Get request to 'api/v1/resource' would output:
-#     # {"event": "request_start", "method": "GET", "path": "/api/v1/resource"}
-#     logger.info("request_start", method = request.method, path = request.url.path)
-#     # Call the next middleware or the route handler to process the request. That is, passes the
-#     # request to the next middleware or route handler and waits for a response. This allows
-#     # logging of both the request and the reponse.
-#     response = await call_next(request)
-#     # Log the end of the request, including the HTTP method, path, and status code.
-#     logger.info("request_end", method=request.method, path=request.url.path, status_code=response.status_code)
-#     return response
-
-
+# Defining a global exception handler to catch all unhandled exceptions in the application.
+# It takes two arguments, request and exc, where request is the incoming request that caused the
+# exception, and exc is the exception that was raised. The function logs the exception and returns
+# a JSONResponse with a status code of 500 (Internal Server Error) and a message indicating that an
+# unexpected error occurred. The headers parameter is used to allow requests from a specific origin.
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.info('here in global exception handler')
-    return JSONResponse(status_code=500, content={"detail": f"An unexpected error occurred. Please try again later. Err: {exc}"}, headers = {
+    logger.error(f'Unhandled exception triggered global exception handler: {exc}', exc_info = True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"An unexpected error occurred. Please try again later. Err: {exc}"},
+        headers = {
         "Access-Control-Allow-Origin": "http://localhost:5173",
-        # "Access-Control-Allow-Credentials": "true",
-        # "Access-Control-Allow-Methods": "POST, GET",
-        # "Access-Control-Allow-Headers": "*"
-    })
+        }
+    )
 
 
 
@@ -163,7 +112,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 # is the exception that was raised.
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    logger.info('here in validation exception handler')
+    logger.error(f'Validation error triggered validation exception handler: {exc}', exc_info = True)
     errors = []
     for error in exc.errors():
         errors.append({"origin": "Input Validation Error after POST request to /train or /cancel",
@@ -193,7 +142,7 @@ async def redis_listener():
             logger.info("Redis listener cancelled.")
             break
         except Exception as e:
-            print(f"Redis error: {e}")
+            logger.error(f"Redis error: {e}", exc_info=True)
             # raise
             break
 
@@ -234,7 +183,7 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.info("WebSocket connection closed")
     
     except Exception as e:
-        logger.info(f"WebSocket error: {e}")
+        logger.error(f"WebSocket error: {e}", exc_info=True)
     
     # finally block is executed after the try block has completed and any exceptions have been handled.
     # We're basically just cleaning up here by closing the connection.
@@ -252,17 +201,6 @@ async def websocket_endpoint(websocket: WebSocket):
 # (Internal Server Error) and the error message.
 @app.post("/train")
 async def train_model_request(payload: TrainModelRequest):
-    # Testing the except block:
-    # 1. Missing a required field in the payload, in this case batch_size. Except block was triggered,
-    # and the HTTPException was raised with the error message to the frontend. The catch block in the
-    # handleTrain() function in the frontend was triggered, and the error state variable was set.
-    # 2. Incorrect Celery configuration, that is, passing an incorrect url to the broker parameter or
-    # the backend parameter in the Celery instance defined in the worker.py. Interestingly enough, 
-    # passing an incorrect url to either the broker parameter or the backend parameter, 
-    # specifically 'redis://wrong-url:6379/0', did not cause an exception at all. This seems to be 
-    # because we are not really using the broker or backend. Previously, we were using them to publish
-    # updates to the frontend, but now we are only using the redis client to listen for updates.
-    #
     try:
         task = train_model.delay(
             layers = payload.layers,
@@ -284,7 +222,7 @@ async def cancel_task(payload : CancelTaskRequest):
         task.revoke(terminate=True)
         return {"status": "Task cancelled"}
     except Exception as e:
-        logging.error(f"Error cancelling task: {e}")
+        logging.error(f"Error cancelling task: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error cancelling task. Exception: {e}")
 
 @app.get("/test-error")
@@ -308,4 +246,4 @@ if __name__ == '__main__':
     # signal.signal() is used to set the handler for the SIGINT (Ctrl+C) and SIGTERM (termination) signals.
     signal.signal(signal.SIGINT, handle_exit)
     signal.signal(signal.SIGTERM, handle_exit)
-    uvicorn.run("app:app", host = "0.0.0.0", port = 5000, reload = True)
+    uvicorn.run("app:app", host = "0.0.0.0", port = (os.getenv("PORT", 5000)), reload = False)
