@@ -14,8 +14,6 @@ RUN apk add --no-cache shadow
 # GID as the volume mounted from the host machine.
 RUN usermod -u 1002 node && groupmod -g 1002 node
 
-# USER node
-
 WORKDIR /frontend
 
 COPY package*.json ./
@@ -24,31 +22,8 @@ RUN npm install
 
 COPY . .
 
-# RUN npm run build
-
-# FROM nginx:alpine
-
-# COPY --from=build /frontend/dist /usr/share/nginx/html
-
-# COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-
-# RUN chmod +x /usr/local/bin/entrypoint.sh
-
-# RUN chown -R appuser:appgroup /frontend
-
 RUN chown -R node:node /frontend
-
-# USER appuser
-
-# USER node
 
 EXPOSE 5173
 
-# CMD ["nginx", "-g", "daemon off;"]
-
-# ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
-
 CMD sh -c 'until nc -z backend 5000; do echo "Waiting for backend to be ready..."; sleep 1; done; npm run dev'
-
-
-# chown -R node:node /frontend &&  

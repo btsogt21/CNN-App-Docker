@@ -1,8 +1,4 @@
-// currently two active console.log, this is to confirm that websocket is receiving MessaveEvent object
-// and passing it onto the onmessage event handler and its associated function.
-
 import { useEffect, useState, useRef } from 'react';
-// import './App.css';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 
@@ -20,6 +16,7 @@ const HomePage = () => {
     // Then, it provides a function 'setLayers' to update it. Similar initialization for the other state
     // variables.
     const navigate = useNavigate();
+
     // state variable for whether the backend is available or not
     const [backendAvailable, setBackendAvailable] = useState(true);
 
@@ -31,11 +28,11 @@ const HomePage = () => {
     const [inputOptimizer, setInputOptimizer] = useState('adam');
     const [accuracy, setAccuracy] = useState(null);
     const [loss, setLoss] = useState(null);
+
     // Defining additional state variables to indicate whether model is currently training, as well
     // as if there is an error during training, as well as whether or not there is an error with the
     // websocket connection. Also state variable for whether we are currently downloading a file.
     const [loading, setLoading] = useState(false);
-    // const [downloading, setDownloading] = useState(false);
     const [error, setError] = useState(null);
     const [wsError, setWsError] = useState(null)
 
@@ -48,7 +45,6 @@ const HomePage = () => {
     const wsRef = useRef(null);
     const timeoutRef = useRef(null);
     const failureCountRef = useRef(0);
-    const reconnectAttemptRef = useRef(0);
     const taskIDRef = useRef(null);
 
     // Defining a function that checks if the backend is available.
@@ -68,10 +64,6 @@ const HomePage = () => {
     // Defining a function to connect to the websocket server. This function will be called when the
     // useEffect hook runs.
     const connect = async () => {
-        // const isAvailable = await checkBackendAvailability();
-        // if (!isAvailable){
-        //     return;
-        // }
         // the try block here is used to catch exceptions thrown while attempting to establish
         // a websocket connection, notably errors that occur synchronously, such as if the URL
         // is invalid or if the server is unreachable due to network issues. Errors arising within
@@ -118,19 +110,6 @@ const HomePage = () => {
             };
             wsRef.current.onclose = function(event){
                 console.log('Websocket connection has been closed');
-                // if (reconnectAttemptRef.current >= 3){
-                //     console.log('Max reconnection attempts reached, please try again later.');
-                //     setWsError('Websocket disconnected or crashed. Max reconnection attempts reached, please try again later.');
-                // }
-                // else {
-                //     console.log('Attempting to reconnect websocket...');
-                //     timeoutRef.current = setTimeout(() => {
-                //         console.log(`Reconnect attempt number first print: ${reconnectAttemptRef.current}`);
-                //         reconnectAttemptRef.current += 1;
-                //         console.log(`Reconnect attempt number second print: ${reconnectAttemptRef.current}`);
-                //         connect();
-                //     }, 10000);
-                // }
                 (async () => {
                     const isAvailable = await checkBackendAvailability();
                     if (isAvailable){
@@ -256,17 +235,12 @@ const HomePage = () => {
                 batchSize: inputBatchSize,
                 optimizer: inputOptimizer
             });
-        } catch (err){ // more specific than just a broad error i.e catch specific types of exceptions
-            // axios exceptions
+        } catch (err){
             let errorMessage = 'Failed to train model: ';
             if (err.response && err.response.data && err.response.data.detail) {
                 const details = err.response.data.detail;
                 console.log(details)
                 if (Array.isArray(details) && details.length > 0) {
-                    // console.log(details[0]['loc'])
-                    // console.log(details[0]['msg'])
-                    // console.log(details[0]['type'])
-                    // errorMessage += details.map(detail => detail.msg).join(', ');
                     errorMessage += JSON.stringify(details[0])
                 } else {
                     errorMessage += JSON.stringify(details);
@@ -274,8 +248,6 @@ const HomePage = () => {
             } else {
                 errorMessage += err.message;
             }
-            // consider splitting the below into one condition for when the error is from the POST request
-            // and another for when the error is from before the POST request
             setError(`Some error occurred while attempting to train, could be prior to POST request or before POST request, discern based on format of error message: ${errorMessage}`);
             setLoading(false);
         }

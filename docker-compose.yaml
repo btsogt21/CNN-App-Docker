@@ -18,12 +18,12 @@ services:
       retries: 5 
 
   backend:
-    build: ./backend
+    image: n9neiiv3s/cifar-10-cnn-backend:latest
     user: nonrootuser
-    volumes:
-      - ./backend:/backend
-      - /backend/venv
-      - backend_venv:/backend/venv
+    # volumes:
+    #   - ./backend:/backend
+    #   - /backend/venv
+    #   - backend_venv:/backend/venv
     ports:
       - "5000:5000"
     deploy:
@@ -54,11 +54,11 @@ services:
 
 
   celery_worker:
-    build: ./backend
-    volumes:
-      - ./backend:/backend
-      - /backend/venv
-      - backend_venv:/backend/venv
+    image: n9neiiv3s/cifar-10-cnn-backend:latest
+    # volumes:
+    #   - ./backend:/backend
+    #   - /backend/venv
+    #   - backend_venv:/backend/venv
     command: /backend/venv/bin/celery -A worker worker --loglevel=info
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
@@ -79,12 +79,12 @@ services:
 
   frontend:
     user: node
-    build: ./frontend
-    volumes:
-      - ./frontend:/frontend
-      - /frontend/node_modules
-      # - /frontend/vite.config.js
-      - frontend_node_modules:/frontend/node_modules
+    image: n9neiiv3s/cifar-10-cnn-frontend:latest
+    # volumes:
+    #   - ./frontend:/frontend
+    #   - /frontend/node_modules
+    #   # - /frontend/vite.config.js
+    #   - frontend_node_modules:/frontend/node_modules
     ports:
       - "5173:5173"
     depends_on:

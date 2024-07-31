@@ -1,9 +1,7 @@
 // currently two active console.log, this is to confirm that websocket is receiving MessaveEvent object
 // and passing it onto the onmessage event handler and its associated function.
 
-import { useEffect, useState, useRef } from 'react';
 import './App.css';
-import axios from 'axios';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import HomePage from './HomePage';
 import ErrorBoundary from './ErrorBoundary';

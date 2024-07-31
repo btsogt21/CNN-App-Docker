@@ -91,6 +91,9 @@ def train_model(self, layers, units, epochs, batch_size, optimizer):
         )
 
         datagen.fit(x_train)
+
+        train_generator = datagen.flow(x_train, y_train, batch_size = batch_size)
+        val_generator = tf.data.Dataset.from_tensor_slices((x_val, y_val)).batch(batch_size)
         test_generator = tf.data.Dataset.from_tensor_slices((x_test, y_test)).batch(batch_size)
 
         # Build model
@@ -139,6 +142,14 @@ def train_model(self, layers, units, epochs, batch_size, optimizer):
 
             def get_total_accuracy(self):
                 return np.sum(self.batch_accuracies)
+        
+        model.fit(
+            train_generator,
+            epochs=epochs,
+            validation_data=val_generator,
+            callbacks=[TrainingCallback()],
+
+        )
 
         # Evaluate the model on the test set
         test_loss, test_accuracy = model.evaluate(test_generator)

@@ -57,7 +57,7 @@ redis_client = None
 async def lifespan(app: FastAPI):
     global redis_client
     retries = 0
-    while retries > 5:
+    while retries < 5:
         try:
             global redis_client
             redis_client = aioredis.from_url(REDIS_URL)
