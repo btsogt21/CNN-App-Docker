@@ -1,0 +1,62 @@
+{
+    "family": "webapi-task",
+    "networkMode": "awsvpc",
+    "requiresCompatibilities": ["FARGATE"],
+    "cpu": "256",
+    "memory": "512",
+    "containerDefinitions": [
+        {
+            "name": "webapi",
+            "image": "n9neiiv3s/cifar-10-cnn-backend:latest",
+            "user": "nonrootuser",
+            "portMappings": [
+                {
+                    "name": "webapi",
+                    "containerPort": 5000,
+                    "hostPort": 5000,
+                    "protocol": "tcp"
+                }
+            ],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/webapi-task",
+                    "awslogs-region": "us-west-2",
+                    "awslogs-stream-prefix": "ecs"
+                }
+            },
+            "healthCheck": {
+                "command": ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"],
+                "interval": 60,
+                "timeout": 5,
+                "retries": 5
+            },
+            "environment":[
+                {
+                    "name": "REDIS_URL",
+                    "value": "redis://redis.cifar-10-discovery:6379"
+                },
+                {
+                    "name": "PORT",
+                    "value": "5000"
+                },
+                {
+                    "name": "SAGEMAKER_ROLE_ARN",
+                    "value": "arn:aws:iam::010928195041:role/ecsTaskRole"
+                },
+                {
+                    "name": "SAGEMAKER_OUTPUT_PATH",
+                    "value": "s3://cifar-10-data-and-models/output"
+                },
+                {
+                    "name": "BUCKET_NAME",
+                    "value": "cifar-10-data-and-models"
+                }
+            ],
+            "stopTimeout": 10,
+            "essential": true
+        }
+    ],
+    "executionRoleArn": "arn:aws:iam::010928195041:role/ecsTaskExecutionRole",
+    "taskRoleArn": "arn:aws:iam::010928195041:role/ecsTaskRole"
+}

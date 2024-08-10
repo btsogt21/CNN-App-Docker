@@ -1,0 +1,38 @@
+{
+    "family": "redis-task",
+    "networkMode": "awsvpc",
+    "requiresCompatibilities": ["FARGATE"],
+    "cpu": "256",
+    "memory": "512",
+    "containerDefinitions": [
+        {
+            "name": "redis",
+            "image": "redis:latest",
+            "portMappings": [
+                {
+                    "name": "redis",
+                    "containerPort": 6379,
+                    "hostPort": 6379,
+                    "protocol": "tcp"
+                }
+            ],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/redis-task",
+                    "awslogs-region": "us-west-2",
+                    "awslogs-stream-prefix": "ecs"
+                }
+            },
+            "healthCheck": {
+                "command": ["CMD-SHELL", "redis-cli ping"],
+                "interval": 10,
+                "timeout": 5,
+                "retries": 5
+            },
+            "essential": true
+        }
+    ],
+    "executionRoleArn": "arn:aws:iam::010928195041:role/ecsTaskExecutionRole",
+    "taskRoleArn": "arn:aws:iam::010928195041:role/ecsTaskRole"
+}

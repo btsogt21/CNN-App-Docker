@@ -54,13 +54,13 @@ class CancelTaskRequest(BaseModel):
     task_id: str
     
     # Ensuring that the task ID is in the correct format.
-    @field_validator('task_id')
-    @classmethod
-    def validate_task_id(cls, v, values):
-        pattern = compile(r'^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$')
-        if not pattern.match(v):
-            raise ValueError('Invalid task ID')
-        return v
+    # @field_validator('task_id')
+    # @classmethod
+    # def validate_task_id(cls, v, values):
+    #     pattern = compile(r'^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$')
+    #     if not pattern.match(v):
+    #         raise ValueError('Invalid task ID')
+    #     return v
 
     # Setting extra to "forbid" ensures that the request will fail if any extra fields are present.
     class Config:

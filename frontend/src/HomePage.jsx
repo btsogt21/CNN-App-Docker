@@ -50,7 +50,7 @@ const HomePage = () => {
     // Defining a function that checks if the backend is available.
     const checkBackendAvailability = async () => {
         try {
-            const response = await fetch('http://localhost:5000/health');
+            const response = await fetch('https://api.cifar-10-ml-trainer.com/health');
             if (!response.ok) {
                 throw new Error('Backend not available');
             }
@@ -82,7 +82,7 @@ const HomePage = () => {
         // `ws://${longUrl}` where longurl => const longUrl = 'w'.repeat(x amoutn of times) 
         // - triggers onerror handler
         try {
-            wsRef.current = new WebSocket(`ws://localhost:5000/ws`);
+            wsRef.current = new WebSocket(`https://api.cifar-10-ml-trainer.com/ws`);
             wsRef.current.onopen = () => {
                 console.log('WebSocket connection established')
             }
@@ -228,7 +228,7 @@ const HomePage = () => {
             // The second argument to the 'post' method is the data we want to send to the server. This data
             // is an object with keys 'layers', 'units', 'epochs', 'batchSize', and 'optimizer'. The values of
             // these keys are the state variables defined above.
-            taskIDRef.current = await axios.post('http://localhost:5000/train', {
+            taskIDRef.current = await axios.post('https://api.cifar-10-ml-trainer.com/train', {
                 layers: inputLayers,
                 units: inputUnits,
                 epochs: inputEpochs,
@@ -279,7 +279,7 @@ const HomePage = () => {
     
     const testErrorHandler = async () => {
         try {
-            const response = await axios.get('http://localhost:5000/test-error');
+            const response = await axios.get('https://api.cifar-10-ml-trainer.com/test-error');
             console.log(response);
         }
         catch (err) {
@@ -290,7 +290,7 @@ const HomePage = () => {
 
     const handleCancel = async () => {
         try {
-            const response = await axios.post('http://localhost:5000/cancel', {
+            const response = await axios.post('https://api.cifar-10-ml-trainer.com/cancel', {
                 task_id: taskIDRef.current.data.task_id
             });
             console.log(response);

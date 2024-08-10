@@ -21,15 +21,18 @@ import sys
 from contextlib import asynccontextmanager
 import os
 import logging
+import boto3
+import time
 
 # Internal imports
 from models import TrainModelRequest, CancelTaskRequest
 from worker import train_model
 from loggingConfig import configure_logging
 
+
 # Environment Variables
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379")
-ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
+# ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
 
 # Logging imports and config
 
@@ -82,7 +85,7 @@ app = FastAPI(lifespan=lifespan)
 # authorization headers, TLS client certificates, etc.) to go through.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origins=["https://www.cifar-10-ml-trainer.com", "https://cifar-10-ml-trainer.com"],
     allow_credentials=True,
     allow_methods=["POST", "GET"],
     allow_headers=["*"]
@@ -95,12 +98,13 @@ app.add_middleware(
 # unexpected error occurred. The headers parameter is used to allow requests from a specific origin.
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
+    origin = request.headers.get('origin')
     logger.error(f'Unhandled exception triggered global exception handler: {exc}', exc_info = True)
     return JSONResponse(
         status_code=500,
         content={"detail": f"An unexpected error occurred. Please try again later. Err: {exc}"},
         headers = {
-        "Access-Control-Allow-Origin": "http://localhost:5173",
+        "Access-Control-Allow-Origin": origin,
         }
     )
 
@@ -202,24 +206,85 @@ async def websocket_endpoint(websocket: WebSocket):
 @app.post("/train")
 async def train_model_request(payload: TrainModelRequest):
     try:
-        task = train_model.delay(
-            layers = payload.layers,
-            units = payload.units,
-            epochs = payload.epochs,
-            batch_size = payload.batchSize,
-            optimizer = payload.optimizer
-        )
-        return {"task_id": task.id}
+        # Initialize Sagemaker client
+        sagemaker_client = boto3.client("sagemaker")
+
+        # Define the training job name
+        training_job_name = f"cifar-10-training-job-{int(time.time())}"
+
+        # Define the training job parameters
+        training_job_params ={
+            "TrainingJobName": training_job_name,
+            "AlgorithmSpecification": {
+                "TrainingImage": "docker.io/n9neiiv3s/cifar-10-sagemaker-training-image:latest",
+                "TrainingInputMode": "File",
+                "TrainingImageConfig": {
+                    "TrainingRepositoryAccessMode": "Vpc"
+                }
+            },
+            "RoleArn": os.getenv("SAGEMAKER_ROLE_ARN", "arn:aws:iam::010928195041:role/ecsTaskRole"),
+            "OutputDataConfig": {
+                "S3OutputPath": os.getenv("SAGEMAKER_OUTPUT_PATH", "s3://cifar-10-data-and-models/output")
+            },
+            "ResourceConfig": {
+                "InstanceCount": 1,
+                "InstanceType": "ml.p2.xlarge",
+                "VolumeSizeInGB": 50
+            },
+            "StoppingCondition": {
+                "MaxRuntimeInSeconds": 3600
+            },
+            "HyperParameters": {
+                "layers": str(payload.layers),
+                "units": str(payload.units),
+                "epochs": str(payload.epochs),
+                "batch_size": str(payload.batchSize),
+                "optimizer": payload.optimizer
+            },
+            "Environment": {
+                "REDIS_URL": REDIS_URL,
+                "BUCKET_NAME": os.getenv("BUCKET_NAME", "cifar-10-data-and-models")
+            },
+            "VpcConfig": {
+                "Subnets": [
+                    "subnet-01a70fab897047f09"
+                ],
+                "SecurityGroupIds": [
+                    "sg-00eb1581970a6652e"
+                ]
+            }
+        }
+
+        response = sagemaker_client.create_training_job(**training_job_params)
+
+        return {'task_id': training_job_name, 'status': 'started'}
+        
     except Exception as e:
-        logging.error(f"Error training model: {e}")
-        raise HTTPException(status_code=500, detail=f"Error running train_model.delay() and assigning it to a celery task. Exception: {e}")
+        logging.error(f"Error initiating training job: {e}")
+        raise HTTPException(status_code=500, detail=f"Error initiating training job. Exception: {e}")
+
+
+    # try:
+    #     task = train_model.delay(
+    #         layers = payload.layers,
+    #         units = payload.units,
+    #         epochs = payload.epochs,
+    #         batch_size = payload.batchSize,
+    #         optimizer = payload.optimizer
+    #     )
+    #     return {"task_id": task.id}
+    # except Exception as e:
+    #     logging.error(f"Error training model: {e}")
+    #     raise HTTPException(status_code=500, detail=f"Error running train_model.delay() and assigning it to a celery task. Exception: {e}")
 
 @app.post("/cancel")
 async def cancel_task(payload : CancelTaskRequest):
     try:
         logger.info(f'here in cancel task {payload.task_id}')
-        task = AsyncResult(payload.task_id)
-        task.revoke(terminate=True)
+        sagemaker_client = boto3.client("sagemaker")
+        sagemaker_client.stop_training_job(TrainingJobName = payload.task_id)
+        # task = AsyncResult(payload.task_id)
+        # task.revoke(t1erminate=True)
         return {"status": "Task cancelled"}
     except Exception as e:
         logging.error(f"Error cancelling task: {e}", exc_info=True)
